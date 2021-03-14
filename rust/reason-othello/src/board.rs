@@ -8,7 +8,7 @@ use packed_simd::{u64x4, u64x8};
 use std::fmt::{self, Write};
 
 /// Holds a single player's pieces on the board in a packed format.
-type Bitboard = u64;
+pub type Bitboard = u64;
 
 /// A pair of bitboards storing the complete game state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -35,15 +35,6 @@ impl Board {
         Self {
             player_bitboard: self.opponent_bitboard,
             opponent_bitboard: self.player_bitboard,
-        }
-    }
-
-    const BLACK_START: Bitboard = 0x0000000810000000;
-    const WHITE_START: Bitboard = 0x0000001008000000;
-    pub const fn new() -> Self {
-        Self {
-            player_bitboard: Self::BLACK_START,
-            opponent_bitboard: Self::WHITE_START,
         }
     }
 
@@ -213,7 +204,6 @@ impl fmt::Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Selects the highest bit for both players
         const PIECE_MASK: Bitboard = 1 << 63;
-        println!("{}", PIECE_MASK);
 
         let mut player_bitboard = self.player_bitboard;
         let mut opponent_bitboard = self.opponent_bitboard;
@@ -318,6 +308,7 @@ impl fmt::Display for Location {
 
 impl MoveList {
     /// Returns whether the move list is empty.
+    #[inline]
     pub fn is_empty(self) -> bool {
         self.0 == 0
     }

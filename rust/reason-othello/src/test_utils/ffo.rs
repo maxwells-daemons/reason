@@ -1,6 +1,7 @@
 //! Utilities for loading and running the FFO engame suite.
 
 use crate::board::{Board, Location};
+use crate::game::GameState;
 use core::panic;
 use std::fs::File;
 use std::io;
@@ -8,7 +9,7 @@ use std::io::prelude::*;
 
 #[derive(Clone, Copy)]
 pub struct FFOPosition {
-    pub board: Board,
+    pub game_state: GameState,
     pub best_move: Option<Location>,
     pub score: i8,
 }
@@ -36,7 +37,10 @@ fn parse_ffo_position(ffo_string: String) -> FFOPosition {
     let score = sections.next().unwrap().parse().unwrap();
 
     FFOPosition {
-        board: parse_ffo_board(board_str, player),
+        game_state: GameState {
+            board: parse_ffo_board(board_str, player),
+            just_passed: false,
+        },
         best_move: mv,
         score: score,
     }

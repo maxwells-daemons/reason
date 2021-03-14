@@ -1,38 +1,36 @@
-use packed_simd::{u64x4, u64x8};
-use std::fmt;
+//! A highly-efficient low-level implementation of Othello board dynamics.
+//!
+//! Under the hood, all types are u64 bitboards. This is intended to be used
+//! through [`game.rs`], but hot-loop code can use bitboards directly.
+//! By convention, the MSB is the upper-left of the board, and uses row-major order.
 
-/// Stores the board state as [my pieces, opponent pieces].
-/// By convention, the MSB is the upper-left of the board, and proceeds in row-major order.
-#[derive(Clone, Copy)]
+use packed_simd::{u64x4, u64x8};
+use std::fmt::{self, Write};
+
+/// Holds a single player's pieces on the board in a packed format.
+type Bitboard = u64;
+
+/// A pair of bitboards storing the complete game state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Board {
-    pub player_bitboard: u64,
-    pub opponent_bitboard: u64,
+    pub player_bitboard: Bitboard,
+    pub opponent_bitboard: Bitboard,
 }
+
+/// Stores a single location on the board as a one-hot vector.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct Location(Bitboard);
 
 /// Stores a list of legal moves out of a position as a bitboard mask.
 /// Can be iterated to retrieve a list of move locations.
-#[derive(Clone, Copy)]
-pub struct MoveList(u64);
-
-/// Stores a single location on the board as a bitboard mask.
-#[derive(Clone, Copy)]
-pub struct Location(u64);
+#[derive(Clone, Copy, Default, Debug, Eq, PartialEq)]
+pub struct MoveList(Bitboard);
 
 impl Board {
     pub const EDGE_LENGTH: u8 = 8;
-    pub const BOARD_SQUARES: u8 = 64;
+    pub const NUM_SPACES: u8 = 64;
 
-    const BLACK_START: u64 = 0x0000000810000000;
-    const WHITE_START: u64 = 0x0000001008000000;
-
-    /// The Othello starting position from black's perspective.
-    pub const fn new() -> Self {
-        Self {
-            player_bitboard: Self::BLACK_START,
-            opponent_bitboard: Self::WHITE_START,
-        }
-    }
-
+    #[inline]
     pub fn pass(self) -> Self {
         Self {
             player_bitboard: self.opponent_bitboard,
@@ -40,9 +38,19 @@ impl Board {
         }
     }
 
+    const BLACK_START: Bitboard = 0x0000000810000000;
+    const WHITE_START: Bitboard = 0x0000001008000000;
+    pub const fn new() -> Self {
+        Self {
+            player_bitboard: Self::BLACK_START,
+            opponent_bitboard: Self::WHITE_START,
+        }
+    }
+
     /// Get a mask of the legal moves for the active player.
     // Algorithm adapted from Sam Blazes' Coin, released under the Apache 2.0 license:
     // https://github.com/Tenebryo/coin/blob/master/bitboard/src/find_moves_fast.rs
+    #[inline]
     pub fn get_moves(self) -> MoveList {
         // Shifts for each vectorized direction: E/W, N/S, NW/SE, NE/SW.
         // The first direction is handled by SHL, the second by SHR.
@@ -51,7 +59,7 @@ impl Board {
         const SHIFTS_4: u64x4 = u64x4::new(4, 32, 28, 36);
 
         // Mask to clip off the invalid wraparound pieces on the edge.
-        const EDGE_MASK: u64 = 0x7E7E7E7E7E7E7E7Eu64;
+        const EDGE_MASK: Bitboard = 0x7E7E7E7E7E7E7E7Eu64;
 
         let opponent_edge_mask = EDGE_MASK & self.opponent_bitboard;
 
@@ -91,13 +99,12 @@ impl Board {
     }
 
     /// Make a move for the active player, given a move mask.
-    // wonky-kong-vectorized
-    // TODO: try a ray-lookup approach
+    #[inline]
     pub fn make_move(self, loc: Location) -> Self {
         // Masks selecting everything except the far-left and far-right columns.
-        const NOT_A_FILE: u64 = 0xfefefefefefefefe;
-        const NOT_H_FILE: u64 = 0x7f7f7f7f7f7f7f7f;
-        const FULL_MASK: u64 = 0xffffffffffffffff;
+        const NOT_A_FILE: Bitboard = 0xfefefefefefefefe;
+        const NOT_H_FILE: Bitboard = 0x7f7f7f7f7f7f7f7f;
+        const FULL_MASK: Bitboard = 0xffffffffffffffff;
 
         // Masks applied when left-shifting or right-shifting.
         const LEFT_MASKS: u64x8 = u64x8::new(
@@ -171,79 +178,49 @@ impl Board {
 
     /// Score a board as: # my pieces - # opponent pieces.
     /// Faster than [`score_winner_gets_empties()`], but less common.
+    #[inline]
     pub fn score_absolute_difference(self) -> i8 {
-        (self.player_bitboard.count_ones() as i8) - (self.player_bitboard.count_ones() as i8)
+        (self.player_bitboard.count_ones() as i8) - (self.opponent_bitboard.count_ones() as i8)
     }
 
     /// Score a board as: # my spaces - # opponent spaces, where empty spaces are scored for the winner.
+    #[inline]
     pub fn score_winner_gets_empties(self) -> i8 {
         let absolute_difference = self.score_absolute_difference();
         if absolute_difference.is_positive() {
-            absolute_difference + self.empties() as i8
+            absolute_difference + self.empty_mask() as i8
         } else if absolute_difference.is_negative() {
-            absolute_difference - self.empties() as i8
+            absolute_difference - self.empty_mask() as i8
         } else {
             0
         }
     }
 
-    fn empties(self) -> u64 {
-        !(self.player_bitboard | self.opponent_bitboard)
+    /// Get a mask indicating where the occupied spaces are.
+    #[inline]
+    pub fn occupied_mask(self) -> Bitboard {
+        self.player_bitboard | self.opponent_bitboard
+    }
+
+    /// Get a mask indicating where the empty spaces are.
+    #[inline]
+    pub fn empty_mask(self) -> Bitboard {
+        !self.occupied_mask()
     }
 }
 
-impl MoveList {
-    pub fn is_empty(self) -> bool {
-        self.0 == 0
-    }
-}
-
-impl Iterator for MoveList {
-    type Item = Location;
-
-    fn next(&mut self) -> Option<Location> {
-        if self.is_empty() {
-            return None;
-        }
-
-        let next_move = 1 << self.0.trailing_zeros();
-        self.0 ^= next_move;
-        Some(Location(next_move))
-    }
-}
-
-impl Location {
-    pub fn from_bitboard(bitboard: u64) -> Self {
-        Self(bitboard)
-    }
-
-    pub fn from_index(index: u8) -> Self {
-        Self(1 << index)
-    }
-}
-
-// Board formatted like:
-//   abcdefgh
-// 1 ........
-// 2 ........
-// 3 ........
-// 4 ...OX...
-// 5 ...XO...
-// 6 ........
-// 7 ........
-// 8 ........
 impl fmt::Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Selects the highest bit for both players
-        const PIECE_MASK: u64 = 1 << 63;
+        const PIECE_MASK: Bitboard = 1 << 63;
         println!("{}", PIECE_MASK);
 
         let mut player_bitboard = self.player_bitboard;
         let mut opponent_bitboard = self.opponent_bitboard;
-        let mut my_piece: u64;
-        let mut opponent_piece: u64;
+        let mut my_piece: Bitboard;
+        let mut opponent_piece: Bitboard;
 
-        writeln!(f, "\n  a b c d e f g h")?;
+        writeln!(f, "\n  A B C D E F G H")?;
         for row in 1..Self::EDGE_LENGTH + 1 {
             write!(f, "{} ", row)?;
             for _ in 1..Self::EDGE_LENGTH + 1 {
@@ -263,5 +240,170 @@ impl fmt::Display for Board {
             writeln!(f)?;
         }
         Ok(())
+    }
+}
+
+impl Location {
+    /// Construct a Location from a "move index": 0 for the bottom right, 63 for the top left.
+    #[inline]
+    pub fn from_index(index: u8) -> Self {
+        Self(1 << index)
+    }
+
+    /// Convert a Location to a "move index": 0 for the bottom right, 63 for the top left.
+    #[inline]
+    pub fn to_index(self) -> u8 {
+        self.0.trailing_zeros() as u8
+    }
+
+    /// Construct a Location from row and column coordinates.
+    /// Returns None if the coordinates provided are not valid.
+    pub fn from_coords(row: u8, col: u8) -> Option<Self> {
+        if row > 7 || col > 7 {
+            None
+        } else {
+            Some(Self::from_index(
+                (7 - row) + ((7 - col) * Board::EDGE_LENGTH),
+            ))
+        }
+    }
+
+    /// Get the row and column a Location represents.
+    pub fn to_coords(self) -> (u8, u8) {
+        let index = self.to_index();
+        let row = 7 - (index % Board::EDGE_LENGTH);
+        let col = 7 - (index.wrapping_div(Board::EDGE_LENGTH));
+        (row, col)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ParseLocationError;
+
+/// Build a Location from a 1-indexed string notation ("A4").
+/// Returns None if the string is not valid notation.
+/// Same behavior as FromString.
+impl std::str::FromStr for Location {
+    type Err = ParseLocationError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut chars = s.chars();
+        let col_str = chars.next().ok_or(ParseLocationError)?.to_ascii_uppercase();
+        let col = "ABCDEFGH".find(col_str).ok_or(ParseLocationError)? as u8;
+        let row = chars
+            .next()
+            .ok_or(ParseLocationError)?
+            .to_digit(10)
+            .ok_or(ParseLocationError)? as u8;
+
+        if chars.next() != None {
+            return Err(ParseLocationError);
+        }
+
+        Self::from_coords(row - 1, col).ok_or(ParseLocationError)
+    }
+}
+
+/// Convert this Location into string notation ("A4").
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (row, col) = self.to_coords();
+        let row_str = "12345678".chars().nth(row as usize).unwrap();
+        let col_str = "ABCDEFGH".chars().nth(col as usize).unwrap();
+        f.write_char(col_str)?;
+        f.write_char(row_str)?;
+        Ok(())
+    }
+}
+
+impl MoveList {
+    /// Returns whether the move list is empty.
+    pub fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl fmt::Display for MoveList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let string = self
+            .into_iter()
+            .map(|mv| mv.to_string())
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        f.write_fmt(format_args!("[{}]", string))
+    }
+}
+
+impl Iterator for MoveList {
+    type Item = Location;
+
+    fn next(&mut self) -> Option<Location> {
+        if self.is_empty() {
+            return None;
+        }
+
+        let next_move = 1 << self.0.trailing_zeros();
+        self.0 ^= next_move;
+        Some(Location(next_move))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn location_from_index() {
+        assert_eq!(Location::from_index(0), Location(1));
+        assert_eq!(Location::from_index(63), Location(1 << 63));
+    }
+
+    #[test]
+    fn location_to_index() {
+        assert_eq!(Location(1).to_index(), 0);
+        assert_eq!(Location(1 << 63).to_index(), 63);
+    }
+
+    #[test]
+    fn location_from_coords() {
+        assert_eq!(Location::from_coords(0, 0), Some(Location(1 << 63)));
+        assert_eq!(Location::from_coords(7, 7), Some(Location(1)));
+        assert_eq!(Location::from_coords(0, 8), None);
+        assert_eq!(Location::from_coords(8, 0), None);
+    }
+
+    #[test]
+    fn location_to_coords() {
+        assert_eq!(Location(1 << 63).to_coords(), (0, 0));
+        assert_eq!(Location(1).to_coords(), (7, 7));
+    }
+
+    #[test]
+    fn location_from_str_success() {
+        assert_eq!(Location::from_str("A1"), Ok(Location(1 << 63)));
+        assert_eq!(Location::from_str("h8"), Ok(Location(1)));
+        assert_eq!(
+            Location::from_str("D7"),
+            Ok(Location::from_coords(6, 3).unwrap())
+        );
+    }
+
+    #[test]
+    fn location_from_str_fail() {
+        assert_eq!(Location::from_str(""), Err(ParseLocationError));
+        assert_eq!(Location::from_str("A12"), Err(ParseLocationError));
+        assert_eq!(Location::from_str("AA"), Err(ParseLocationError));
+        assert_eq!(Location::from_str("A9"), Err(ParseLocationError));
+        assert_eq!(Location::from_str("I5"), Err(ParseLocationError));
+    }
+
+    #[test]
+    fn location_to_str() {
+        assert_eq!(Location(1).to_string(), "H8");
+        assert_eq!(Location(1 << 63).to_string(), "A1");
+        assert_eq!(Location::from_str("E2").unwrap().to_string(), "E2");
+        assert_eq!(Location::from_str("F6").unwrap().to_string(), "F6");
     }
 }

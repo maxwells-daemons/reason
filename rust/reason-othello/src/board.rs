@@ -17,7 +17,7 @@ pub struct Board {
     pub opponent_bitboard: Bitboard,
 }
 
-/// Stores a single location on the board as a one-hot vector.
+/// Stores a single location on the board as a one-hot vector, or all zeros for a Pass move.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Location(Bitboard);
 
@@ -234,6 +234,13 @@ impl fmt::Display for Board {
 }
 
 impl Location {
+    pub const PASS: Self = Self(0);
+
+    #[inline]
+    pub fn is_pass(self) -> bool {
+        self.0 == 0
+    }
+
     /// Construct a Location from a "move index": 0 for the bottom right, 63 for the top left.
     #[inline]
     pub fn from_index(index: u8) -> Self {
@@ -241,6 +248,7 @@ impl Location {
     }
 
     /// Convert a Location to a "move index": 0 for the bottom right, 63 for the top left.
+    /// Undefined for PASS moves.
     #[inline]
     pub fn to_index(self) -> u8 {
         self.0.trailing_zeros() as u8
@@ -259,6 +267,7 @@ impl Location {
     }
 
     /// Get the row and column a Location represents.
+    /// Undefined for PASS moves.
     pub fn to_coords(self) -> (u8, u8) {
         let index = self.to_index();
         let row = 7 - (index % Board::EDGE_LENGTH);
@@ -270,13 +279,17 @@ impl Location {
 #[derive(Debug, PartialEq)]
 pub struct ParseLocationError;
 
-/// Build a Location from a 1-indexed string notation ("A4").
+/// Build a Location from a 1-indexed string notation ("A4"; "PASS").
 /// Returns None if the string is not valid notation.
 /// Same behavior as FromString.
 impl std::str::FromStr for Location {
     type Err = ParseLocationError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == "PASS" {
+            return Ok(Self::PASS);
+        }
+
         let mut chars = s.chars();
         let col_str = chars.next().ok_or(ParseLocationError)?.to_ascii_uppercase();
         let col = "ABCDEFGH".find(col_str).ok_or(ParseLocationError)? as u8;
@@ -294,15 +307,18 @@ impl std::str::FromStr for Location {
     }
 }
 
-/// Convert this Location into string notation ("A4").
+/// Convert this Location into string notation ("A4" / "PASS").
 impl fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (row, col) = self.to_coords();
-        let row_str = "12345678".chars().nth(row as usize).unwrap();
-        let col_str = "ABCDEFGH".chars().nth(col as usize).unwrap();
-        f.write_char(col_str)?;
-        f.write_char(row_str)?;
-        Ok(())
+        if self.is_pass() {
+            f.write_str("PASS")
+        } else {
+            let (row, col) = self.to_coords();
+            let row_str = "12345678".chars().nth(row as usize).unwrap();
+            let col_str = "ABCDEFGH".chars().nth(col as usize).unwrap();
+            f.write_char(col_str)?;
+            f.write_char(row_str)
+        }
     }
 }
 

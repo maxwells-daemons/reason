@@ -32,19 +32,6 @@ impl std::ops::Not for Player {
     }
 }
 
-/// An action in an Othello game: pass or select a location.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Action {
-    MakeMove(Location),
-    Pass,
-}
-
-impl From<Location> for Action {
-    fn from(mv: Location) -> Self {
-        Self::MakeMove(mv)
-    }
-}
-
 /// The complete state of an Othello game.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GameState {
@@ -108,20 +95,12 @@ impl GameState {
     }
 
     /// Make a placement move for the active player.
+    /// Does not handle PASS.
     #[inline]
     pub fn make_move(self, loc: Location) -> Self {
         Self {
             board: self.board.make_move(loc),
             just_passed: false,
-        }
-    }
-
-    /// Make an action as the active player.
-    #[inline]
-    pub fn act(self, action: Action) -> Self {
-        match action {
-            Action::Pass => self.pass(),
-            Action::MakeMove(mv) => self.make_move(mv),
         }
     }
 }

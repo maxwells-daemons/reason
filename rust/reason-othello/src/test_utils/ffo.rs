@@ -1,7 +1,7 @@
 //! Utilities for loading and running the FFO engame suite.
 
-use crate::board::{Board, Location};
-use crate::game::GameState;
+use crate::bitboard::Bitboard;
+use crate::game::{Board, GameState, Move};
 use core::panic;
 use std::fs::File;
 use std::io;
@@ -10,7 +10,7 @@ use std::io::prelude::*;
 #[derive(Clone, Copy)]
 pub struct FFOPosition {
     pub game_state: GameState,
-    pub best_move: Option<Location>,
+    pub best_move: Option<Move>,
     pub score: i8,
 }
 
@@ -32,7 +32,7 @@ fn parse_ffo_position(ffo_string: String) -> FFOPosition {
 
     let mv = match sections.next().unwrap() {
         "-1" => None,
-        n => Some(Location::from_index(n.parse().unwrap())),
+        n => Some(Move::from_index(n.parse().unwrap())),
     };
     let score = sections.next().unwrap().parse().unwrap();
 
@@ -64,14 +64,12 @@ fn parse_ffo_board(board_str: &str, player: &str) -> Board {
     }
 
     match player {
-        "Black" => Board {
-            player_bitboard: black_bitboard,
-            opponent_bitboard: white_bitboard,
-        },
-        "White" => Board {
-            player_bitboard: white_bitboard,
-            opponent_bitboard: black_bitboard,
-        },
+        "Black" => {
+            Board::from_perspective_bitboards(Bitboard(black_bitboard), Bitboard(white_bitboard))
+        }
+        "White" => {
+            Board::from_perspective_bitboards(Bitboard(white_bitboard), Bitboard(black_bitboard))
+        }
         player => panic!("FFO player is not Black or White: {}", player),
     }
 }

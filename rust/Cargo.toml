@@ -3,3 +3,11 @@ members = [
     "reason-othello",
     "reason-solver"
 ]
+
+[profile.bench]
+lto = "fat"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"

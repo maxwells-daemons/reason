@@ -14,7 +14,7 @@ fn leaves_below(game: GameState, depth: u64) -> u64 {
         return 1;
     }
 
-    let all_moves = game.get_moves();
+    let all_moves = game.board.get_moves();
     if all_moves.is_empty() {
         // Both players passed: game is over
         if game.just_passed {
@@ -25,7 +25,7 @@ fn leaves_below(game: GameState, depth: u64) -> u64 {
     }
 
     all_moves
-        .map(|mv| leaves_below(game.make_move(mv), depth - 1))
+        .map(|mv| leaves_below(game.apply_move(mv), depth - 1))
         .sum()
 }
 

@@ -42,6 +42,9 @@ pub enum Player {
 #[derive(Debug, PartialEq)]
 pub struct ParseMoveError;
 
+#[derive(Debug, PartialEq)]
+pub struct ParsePlayerError;
+
 impl GameState {
     /// Compute the game state after a pass move.
     #[inline]
@@ -285,6 +288,19 @@ impl std::ops::Not for Player {
         match self {
             Player::Black => Player::White,
             Player::White => Player::Black,
+        }
+    }
+}
+
+/// Parse "Black" or "White" into a Player object.
+impl std::str::FromStr for Player {
+    type Err = ParsePlayerError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_uppercase().as_str() {
+            "BLACK" => Ok(Player::Black),
+            "WHITE" => Ok(Player::White),
+            _ => Err(ParsePlayerError),
         }
     }
 }

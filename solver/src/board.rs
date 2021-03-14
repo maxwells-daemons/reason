@@ -5,8 +5,8 @@ use std::fmt;
 /// By convention, the MSB is the upper-left of the board, and proceeds in row-major order.
 #[derive(Clone, Copy)]
 pub struct Board {
-    player_bitboard: u64,
-    opponent_bitboard: u64,
+    pub player_bitboard: u64,
+    pub opponent_bitboard: u64,
 }
 
 /// Stores a list of legal moves out of a position as a bitboard mask.
@@ -171,17 +171,17 @@ impl Board {
 
     /// Score a board as: # my pieces - # opponent pieces.
     /// Faster than [`score_winner_gets_empties()`], but less common.
-    pub fn score_absolute_difference(self) -> i64 {
-        (self.player_bitboard.count_ones() as i64) - (self.player_bitboard.count_ones() as i64)
+    pub fn score_absolute_difference(self) -> i8 {
+        (self.player_bitboard.count_ones() as i8) - (self.player_bitboard.count_ones() as i8)
     }
 
     /// Score a board as: # my spaces - # opponent spaces, where empty spaces are scored for the winner.
-    pub fn score_winner_gets_empties(self) -> i64 {
+    pub fn score_winner_gets_empties(self) -> i8 {
         let absolute_difference = self.score_absolute_difference();
         if absolute_difference.is_positive() {
-            absolute_difference + self.empties() as i64
+            absolute_difference + self.empties() as i8
         } else if absolute_difference.is_negative() {
-            absolute_difference - self.empties() as i64
+            absolute_difference - self.empties() as i8
         } else {
             0
         }
@@ -212,16 +212,26 @@ impl Iterator for MoveList {
     }
 }
 
+impl Location {
+    pub fn from_bitboard(bitboard: u64) -> Self {
+        Self(bitboard)
+    }
+
+    pub fn from_index(index: u8) -> Self {
+        Self(1 << index)
+    }
+}
+
 // Board formatted like:
-//  abcdefgh
-// 1........
-// 2........
-// 3........
-// 4...OX...
-// 5...XO...
-// 6........
-// 7........
-// 8........
+//   abcdefgh
+// 1 ........
+// 2 ........
+// 3 ........
+// 4 ...OX...
+// 5 ...XO...
+// 6 ........
+// 7 ........
+// 8 ........
 impl fmt::Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Selects the highest bit for both players
@@ -233,17 +243,17 @@ impl fmt::Display for Board {
         let mut my_piece: u64;
         let mut opponent_piece: u64;
 
-        writeln!(f, "\n abcdefgh")?;
+        writeln!(f, "\n  a b c d e f g h")?;
         for row in 1..Self::EDGE_LENGTH + 1 {
-            write!(f, "{}", row)?;
+            write!(f, "{} ", row)?;
             for _ in 1..Self::EDGE_LENGTH + 1 {
                 my_piece = player_bitboard & PIECE_MASK;
                 opponent_piece = opponent_bitboard & PIECE_MASK;
 
                 match (my_piece, opponent_piece) {
-                    (0, 0) => write!(f, "."),
-                    (PIECE_MASK, 0) => write!(f, "X"),
-                    (0, PIECE_MASK) => write!(f, "O"),
+                    (0, 0) => write!(f, ". "),
+                    (PIECE_MASK, 0) => write!(f, "# "),
+                    (0, PIECE_MASK) => write!(f, "O "),
                     _ => Err(fmt::Error),
                 }?;
 

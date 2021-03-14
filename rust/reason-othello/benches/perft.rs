@@ -1,7 +1,7 @@
 use criterion::*;
 use pprof::criterion::{Output, PProfProfiler};
 
-use solver::test_utils;
+use reason_othello::test_utils::perft;
 
 fn criterion_perft(c: &mut Criterion) {
     let mut group = c.benchmark_group("perft");
@@ -9,7 +9,7 @@ fn criterion_perft(c: &mut Criterion) {
 
     for depth in 1..6 {
         group.bench_with_input(BenchmarkId::from_parameter(depth), &depth, |b, &depth| {
-            b.iter(|| test_utils::perft::run_perft(black_box(depth)))
+            b.iter(|| perft::run_perft(black_box(depth)))
         });
     }
 

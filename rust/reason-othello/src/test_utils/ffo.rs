@@ -6,10 +6,11 @@ use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 
+#[derive(Clone, Copy)]
 pub struct FFOPosition {
-    board: Board,
-    best_move: Option<Location>,
-    score: i8,
+    pub board: Board,
+    pub best_move: Option<Location>,
+    pub score: i8,
 }
 
 pub fn load_ffo_positions(path: &str) -> Vec<FFOPosition> {

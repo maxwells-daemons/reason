@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 reason-othello = { path = "../reason-othello"}
+arrayvec = "0.5.2"
 
 [dev-dependencies]
 indicatif = "0.15.0"

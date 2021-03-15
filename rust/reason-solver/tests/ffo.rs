@@ -19,12 +19,10 @@ fn ffo_win_loss_draw(path: &str) {
 }
 
 #[test]
-// Naive alpha-beta: 16.7s
 fn ffo_13_14_exact() {
     ffo_exact("../../resources/ffo/13_14.txt")
 }
 
-// Naive alpha-beta: 3.2s
 #[test]
 fn ffo_13_14_wld() {
     ffo_win_loss_draw("../../resources/ffo/13_14.txt")

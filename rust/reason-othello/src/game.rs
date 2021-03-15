@@ -160,7 +160,7 @@ impl Board {
 
     /// Count the number of empty spaces on the board.
     #[inline]
-    pub fn count_empties(self) -> i8 {
+    pub fn count_empties(self) -> u8 {
         bitboard::count_empties(self.active_bitboard, self.opponent_bitboard)
     }
 }
@@ -257,8 +257,15 @@ impl MoveList {
     pub fn is_empty(self) -> bool {
         self.0 .0 == 0
     }
+
+    #[inline]
+    /// Returns the number of moves in the list.
+    pub fn num_moves(self) -> u8 {
+        self.0 .0.count_ones() as u8
+    }
 }
 
+/// Iterating a MoveList yields all legal moves.
 impl Iterator for MoveList {
     type Item = Move;
 

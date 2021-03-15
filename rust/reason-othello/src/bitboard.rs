@@ -24,8 +24,8 @@ pub fn get_empty_mask(player_1: Bitboard, player_2: Bitboard) -> Bitboard {
 
 /// Count the number of empty spaces on the board.
 #[inline]
-pub fn count_empties(player_1: Bitboard, player_2: Bitboard) -> i8 {
-    get_occupancy_mask(player_1, player_2).0.count_zeros() as i8
+pub fn count_empties(player_1: Bitboard, player_2: Bitboard) -> u8 {
+    get_occupancy_mask(player_1, player_2).0.count_zeros() as u8
 }
 
 /// Score a board as: # my pieces - # opponent pieces.
@@ -41,9 +41,9 @@ pub fn score_winner_gets_empties(active: Bitboard, opponent: Bitboard) -> i8 {
     let absolute_difference = score_absolute_difference(active, opponent);
 
     if absolute_difference.is_positive() {
-        absolute_difference + count_empties(active, opponent)
+        absolute_difference + (count_empties(active, opponent) as i8)
     } else if absolute_difference.is_negative() {
-        absolute_difference - count_empties(active, opponent)
+        absolute_difference - (count_empties(active, opponent) as i8)
     } else {
         0
     }

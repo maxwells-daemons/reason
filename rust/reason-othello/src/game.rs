@@ -25,7 +25,7 @@ pub struct Board {
 
 /// A location on the board or a move, including "Pass".
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub struct Move(Bitboard);
+pub struct Move(pub Bitboard);
 
 /// A list of legal moves out of a position.
 /// Acts as an iterator over move locations.

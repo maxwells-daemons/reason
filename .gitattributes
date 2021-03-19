@@ -1,2 +1,2 @@
-resources filter=lfs diff=lfs merge=lfs -text
+resources/** filter=lfs diff=lfs merge=lfs -text
 resources/README.md !text !filter !merge !diff

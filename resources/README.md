@@ -19,3 +19,7 @@ Games are stored in the WTHOR database format.
 ## logistello
 Self-play games by Michael Buro's [Logistello](https://skatgame.net/mburo/log.html), used for training.
 Games are stored in an ASCII format.
+
+## checkpoints
+Model checkpoints from the current modeel.
+Not ready for general use yet.

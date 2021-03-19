@@ -5,7 +5,7 @@ authors = ["Aidan Swope <aidanswope@gmail.com>"]
 edition = "2018"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["lib", "cdylib"]
 
 [dependencies]
 packed_simd = { version = "0.3.4", package = "packed_simd_2" }

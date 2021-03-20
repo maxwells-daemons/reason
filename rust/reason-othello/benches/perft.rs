@@ -1,4 +1,6 @@
 use criterion::*;
+
+#[cfg(unix)]
 use pprof::criterion::{Output, PProfProfiler};
 
 use reason_othello::test_utils::perft;
@@ -16,9 +18,18 @@ fn criterion_perft(c: &mut Criterion) {
     group.finish();
 }
 
+#[cfg(unix)]
 criterion_group! {
     name = perft;
     config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
     targets = criterion_perft
 }
+
+#[cfg(not(unix))]
+criterion_group! {
+    name = perft;
+    config = Criterion::default();
+    targets = criterion_perft
+}
+
 criterion_main!(perft);

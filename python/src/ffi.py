@@ -3,6 +3,7 @@ A wrapper for moves provided by the `reason-othello` library through an FFI.
 """
 
 import ctypes
+import logging
 
 import torch
 
@@ -10,6 +11,8 @@ LIB_PATH = "rust/target/release/libreason_othello.so"
 
 _HIGH_BIT = 1 << 63
 _BOARD_EDGE = 8
+
+_logger = logging.getLogger(__name__)
 
 
 class ApplyMoveResult(ctypes.Structure):
@@ -19,6 +22,7 @@ class ApplyMoveResult(ctypes.Structure):
     ]
 
 
+_logger.debug("Loading reason-othello FFI library.")
 _LIB_HANDLE = ctypes.cdll.LoadLibrary(LIB_PATH)
 _LIB_HANDLE.ffi_get_move_mask.restype = ctypes.c_uint64
 _LIB_HANDLE.ffi_apply_move.restype = ApplyMoveResult

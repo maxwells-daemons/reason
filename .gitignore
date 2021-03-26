@@ -1,6 +1,6 @@
 ### Project files ###
 **/flamegraph.svg
-lightning_logs/
+wandb/
 
 # Created by https://www.toptal.com/developers/gitignore/api/rust,python,visualstudio
 # Edit at https://www.toptal.com/developers/gitignore?templates=rust,python,visualstudio

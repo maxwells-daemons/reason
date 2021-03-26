@@ -2,11 +2,16 @@
 Defines the training strategy.
 """
 
-import torch
-import pytorch_lightning as pl
+import logging
 
-from src.network import AgentModel
+import pytorch_lightning as pl
+import torch
+import wandb
+
 from src.data.logistello import LogistelloDataModule
+from src.network import AgentModel
+
+_logger = logging.getLogger("lightning")
 
 
 class TrainingModule(pl.LightningModule):
@@ -32,21 +37,17 @@ class TrainingModule(pl.LightningModule):
 
         policy_flat = policy.view(policy.size(0), -1)
         policy_loss = self.policy_loss_fn(policy_flat, move_index)
-        self.log("policy_loss/training", policy_loss)
-
-        value_loss = self.value_loss_fn(value, outcome)
-        self.log("value_loss/training", value_loss)
-
-        loss = policy_loss + value_loss
-        self.log("total_loss/training", loss)
+        self.log("policy.loss.training", policy_loss)
 
         policy_dist = torch.softmax(policy_flat, dim=-1)
         self.policy_acc_train(policy_dist, move_index)
-        self.log("policy_acc/training", self.policy_acc_train)
+        self.log("policy.accuracy.training", self.policy_acc_train)
 
-        self.log("value/mean", value.mean())
-        self.log("value/max", value.max())
-        self.log("value/min", value.min())
+        value_loss = self.value_loss_fn(value, outcome)
+        self.log("value.loss.training", value_loss)
+
+        loss = policy_loss + value_loss
+        self.log("loss.training", loss)
 
         return loss
 
@@ -56,29 +57,43 @@ class TrainingModule(pl.LightningModule):
 
         policy_flat = policy.view(policy.size(0), -1)
         policy_loss = self.policy_loss_fn(policy_flat, move_index)
-        self.log("policy_loss/validation", policy_loss)
+        self.log("policy_loss.validation", policy_loss)
 
         value_loss = self.value_loss_fn(value, outcome)
-        self.log("value_loss/validation", value_loss)
+        self.log("value_loss.validation", value_loss)
 
         loss = policy_loss + value_loss
-        self.log("total_loss/validation", loss)
+        self.log("total_loss.validation", loss)
 
         policy_dist = torch.softmax(policy_flat, dim=-1)
         self.policy_acc_val(policy_dist, move_index)
-        self.log("policy_acc/validation", self.policy_acc_train)
+        self.log("policy_acc.validation", self.policy_acc_train)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
 
 
 def train(
-    learning_rate: float, n_channels: int = 128, n_blocks: int = 5, batch_size: int = 32
+    learning_rate: float,
+    n_channels: int = 128,
+    n_blocks: int = 5,
+    batch_size: int = 32,
 ):
-    trainer = pl.Trainer(gpus=-1, callbacks=[], gradient_clip_val=0.1)
+    _logger.info("Beginning a new training run.")
+
+    _logger.debug("Setting up W&B integration.")
+    logger = pl.loggers.WandbLogger(project="reason")
+    wandb.config.batch_size = batch_size
+
+    _logger.info("Initializing model, trainer, and data.")
     model = TrainingModule(learning_rate, n_channels, n_blocks)
+    trainer = pl.Trainer(gpus=-1, callbacks=[], logger=logger)
     data_module = LogistelloDataModule(batch_size=batch_size)  # type: ignore
+
+    _logger.info("Starting training.")
     trainer.fit(model, datamodule=data_module)  # type: ignore
+
+    _logger.info("Training complete.")
 
 
 # TODO: remove

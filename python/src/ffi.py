@@ -39,43 +39,43 @@ def _serialize_pieces(pieces: torch.Tensor) -> ctypes.c_uint64:
 
 
 def _deserialize_pieces(bitboard: int) -> torch.Tensor:
-    board = torch.zeros([_BOARD_EDGE, _BOARD_EDGE], dtype=bool)  # type: ignore
+    pieces = torch.zeros([_BOARD_EDGE, _BOARD_EDGE], dtype=bool)  # type: ignore
 
     for col in range(_BOARD_EDGE):
         for row in range(_BOARD_EDGE):
-            board[col, row] = bool(bitboard & _HIGH_BIT)
+            pieces[col, row] = bool(bitboard & _HIGH_BIT)
             bitboard <<= 1
 
-    return board
+    return pieces
 
 
-def _validate_board_shape(pieces: torch.Tensor) -> None:
-    if pieces.shape != (2, _BOARD_EDGE, _BOARD_EDGE):
+def _validate_board_shape(board: torch.Tensor) -> None:
+    if board.shape != (2, _BOARD_EDGE, _BOARD_EDGE):
         raise ValueError("Invalid board shape.")
 
 
-def get_move_mask(pieces: torch.Tensor) -> torch.Tensor:
+def get_move_mask(board: torch.Tensor) -> torch.Tensor:
     """
     Given the active player's pieces and the opponent's pieces,
     get a mask of the legal move locations.
     """
-    _validate_board_shape(pieces)
+    _validate_board_shape(board)
 
-    active_mask = _serialize_pieces(pieces[0])
-    opponent_mask = _serialize_pieces(pieces[1])
+    active_mask = _serialize_pieces(board[0])
+    opponent_mask = _serialize_pieces(board[1])
     result_bitboard = _LIB_HANDLE.ffi_get_move_mask(active_mask, opponent_mask)
     return _deserialize_pieces(result_bitboard)
 
 
-def apply_move(pieces: torch.Tensor, row: int, col: int) -> torch.Tensor:
+def apply_move(board: torch.Tensor, row: int, col: int) -> torch.Tensor:
     """
     Given the active player's pieces, the opponent's pieces, and a row and
     column index, compute the new piece masks.
     """
-    _validate_board_shape(pieces)
+    _validate_board_shape(board)
 
-    active_mask = _serialize_pieces(pieces[0])
-    opponent_mask = _serialize_pieces(pieces[1])
+    active_mask = _serialize_pieces(board[0])
+    opponent_mask = _serialize_pieces(board[1])
     result: ApplyMoveResult = _LIB_HANDLE.ffi_apply_move(
         active_mask, opponent_mask, ctypes.c_uint8(col), ctypes.c_uint8(row)
     )

@@ -85,7 +85,7 @@ class LogistelloDataset(torch.utils.data.IterableDataset):
             if move is None:
                 continue
 
-            board = state.pieces
+            board = state.board
 
             # NOTE: getting the move index by explicitly building the board is
             # convenient, but inefficient

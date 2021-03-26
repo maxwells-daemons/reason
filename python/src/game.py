@@ -30,24 +30,22 @@ class GameState:
 
     # All the pieces on the board, as the [active player, opponent].
     # Shape: [2, 8, 8]; bool.
-    pieces: torch.Tensor
+    board: torch.Tensor
     active_player: Player
     just_passed: bool
 
     def player_view(self, player: Player) -> torch.Tensor:
         """Get the view of the board from the perspective of a particular player."""
-        return (
-            self.pieces if player == self.active_player else self.pieces[(1, 0), :, :]
-        )
+        return self.board if player == self.active_player else self.board[(1, 0), :, :]
 
     def get_move_mask(self) -> torch.Tensor:
-        return ffi.get_move_mask(self.pieces)
+        return ffi.get_move_mask(self.board)
 
     def apply_pass(self) -> "GameState":
-        return GameState(self.pieces[(1, 0), :, :], self.active_player.other(), True)
+        return GameState(self.board[(1, 0), :, :], self.active_player.other(), True)
 
     def apply_move(self, row: int, col: int) -> "GameState":
-        new_board = ffi.apply_move(self.pieces, row, col)
+        new_board = ffi.apply_move(self.board, row, col)
         return GameState(new_board[(1, 0), :, :], self.active_player.other(), False)
 
     def score_absolute_difference(self, player: Player) -> int:
@@ -88,21 +86,21 @@ def parse_move(move: str) -> Tuple[int, int]:
 
 
 def starting_state() -> GameState:
-    pieces = torch.zeros((2, BOARD_EDGE, BOARD_EDGE), dtype=bool)  # type: ignore
-    pieces[0, 3, 4] = 1
-    pieces[0, 4, 3] = 1
-    pieces[1, 3, 3] = 1
-    pieces[1, 4, 4] = 1
-    return GameState(pieces, Player.BLACK, False)
+    board = torch.zeros((2, BOARD_EDGE, BOARD_EDGE), dtype=bool)  # type: ignore
+    board[0, 3, 4] = 1
+    board[0, 4, 3] = 1
+    board[1, 3, 3] = 1
+    board[1, 4, 4] = 1
+    return GameState(board, Player.BLACK, False)
 
 
-def _score_absolute_difference(pieces: torch.Tensor) -> int:
-    return (pieces[0].sum() - pieces[1].sum()).item()  # type: ignore
+def _score_absolute_difference(board: torch.Tensor) -> int:
+    return (board[0].sum() - board[1].sum()).item()  # type: ignore
 
 
-def _score_winner_gets_empties(pieces: torch.Tensor) -> int:
-    my_score = pieces[0].sum().item()
-    opp_score = pieces[1].sum().item()
+def _score_winner_gets_empties(board: torch.Tensor) -> int:
+    my_score = board[0].sum().item()
+    opp_score = board[1].sum().item()
     empties = 64 - (my_score + opp_score)
 
     if my_score > opp_score:

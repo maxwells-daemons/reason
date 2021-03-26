@@ -41,6 +41,9 @@ class GameState:
     def get_move_mask(self) -> torch.Tensor:
         return ffi.get_move_mask(self.board)
 
+    def get_empty_mask(self) -> torch.Tensor:
+        return ~(self.board[0] | self.board[1])
+
     def apply_pass(self) -> "GameState":
         return GameState(self.board[(1, 0), :, :], self.active_player.other(), True)
 
@@ -92,6 +95,12 @@ def starting_state() -> GameState:
     board[1, 3, 3] = 1
     board[1, 4, 4] = 1
     return GameState(board, Player.BLACK, False)
+
+
+def make_move_mask(row: int, col: int) -> torch.Tensor:
+    mask = torch.zeros([BOARD_EDGE, BOARD_EDGE], dtype=bool)  # type: ignore
+    mask[row, col] = True
+    return mask
 
 
 def _score_absolute_difference(board: torch.Tensor) -> int:

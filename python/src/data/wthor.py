@@ -14,9 +14,6 @@ from typing import Iterator, Tuple
 import torch
 from src import game
 from src.data import imitation
-from tqdm import tqdm
-
-WTHOR_GLOB = "resources/wthor/*.wtb"
 
 DB_HEADER_BYTES = 16  # Bytes in the header of a WTHOR database
 GAME_BYTES = 68  # Bytes in a WTHOR game's data
@@ -65,7 +62,7 @@ class WthorDataset(torch.utils.data.IterableDataset):
     A dataset of WTHOR games.
     """
 
-    def __init__(self, path_glob: str = WTHOR_GLOB):
+    def __init__(self, path_glob):
         super(WthorDataset, self).__init__()
 
         self._paths = glob(path_glob)
@@ -91,9 +88,8 @@ class WthorDataset(torch.utils.data.IterableDataset):
                 self._paths, worker_info.id, None, worker_info.num_workers
             )
 
-        yield from itertools.chain.from_iterable(
-            map(self._shard_examples, worker_paths)
-        )
+        for path in worker_paths:
+            yield from self._shard_examples(path)
 
     @staticmethod
     def _shard_examples(path: str) -> Iterator[imitation.Example]:

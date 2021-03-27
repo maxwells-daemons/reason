@@ -10,8 +10,6 @@ import torch
 from src import game
 from src.data import imitation
 
-LOGISTELLO_PATH = "resources/logistello/logbook.gam"
-
 
 def parse_game(line: str) -> Iterator[imitation.Example]:
     """
@@ -54,7 +52,7 @@ class LogistelloDataset(torch.utils.data.IterableDataset):
     A Dataset of Logistello games.
     """
 
-    def __init__(self, path: str = LOGISTELLO_PATH):
+    def __init__(self, path: str):
         super(LogistelloDataset, self).__init__()
 
         with open(path, "r") as f:

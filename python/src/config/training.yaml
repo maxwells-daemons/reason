@@ -1,0 +1,86 @@
+### Top-level configuration for the training script
+
+# Neural architecture
+model:
+  _target_: src.network.AgentModel
+
+  n_channels: 128
+  n_blocks: 3
+
+# Training strategy
+training:
+  _target_: src.training.TrainingModule
+
+  learning_rate: 1e-4
+
+# Training hardware setup
+trainer:
+  _target_: pytorch_lightning.Trainer
+
+  gpus: -1
+  # TODO: gradient clipping
+
+# Data config
+imitation_data:
+  _target_: src.training.ImitationData
+
+  # Data properties
+  batch_size: 256
+  wthor_weight: 1.0
+  augment_square_symmetries: false # TODO: enable
+  augment_swap_players: false # TODO: enable
+
+  # Misc
+  shuffle_buffer_size: 1000
+  data_workers: 24
+
+  # Data paths
+  wthor_glob: resources/wthor/*.wtb
+  logistello_path: resources/logistello/logbook.gam
+
+# Periodic visualization
+visualize_callback:
+  _target_: src.training.VisualizePredictions
+
+  batch_period: 1000
+
+# Weights & Biases logging
+logger:
+  _target_: pytorch_lightning.loggers.WandbLogger
+  project: reason
+
+  # Enable to avoid pushing data
+  # mode: offline
+
+# Hyperparameter logging structure
+log_hparams:
+  model: ${model}
+  training: ${training}
+  imitation_data: ${imitation_data}
+  trainer: ${trainer}
+
+
+# Disable Hydra log file and working directory management
+defaults:
+  - hydra/job_logging: stdout
+  - hydra/hydra_logging: colorlog
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+  job_logging:
+    formatters:
+      colorlog:
+        '()': 'colorlog.ColoredFormatter'
+        format: '[%(cyan)s%(asctime)s%(reset)s][%(blue)s%(name)s%(reset)s][%(log_color)s%(levelname)s%(reset)s] - %(message)s'
+        log_colors:
+          DEBUG: purple
+          INFO: green
+          WARNING: yellow
+          ERROR: red
+          CRITICAL: red
+    handlers:
+      console:
+        formatter: colorlog

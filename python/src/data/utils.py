@@ -21,10 +21,13 @@ class SamplingDataset(torch.utils.data.IterableDataset):
     def __iter__(self):
         ds_iters = [iter(ds) for ds in self._datasets]
 
-        while True:
-            budget = torch.rand(1).item() * sum(self._weights)
-            for weight, ds_iter in zip(self._weights, ds_iters):
-                budget -= weight
-                if budget <= 0:
-                    yield next(ds_iter)
-                    break
+        try:
+            while True:
+                budget = torch.rand(1).item() * sum(self._weights)
+                for weight, ds_iter in zip(self._weights, ds_iters):
+                    budget -= weight
+                    if budget <= 0:
+                        yield next(ds_iter)
+                        break
+        except StopIteration:
+            pass

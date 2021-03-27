@@ -60,7 +60,7 @@ class ValueHead(torch.nn.Sequential):
 
 
 class AgentModel(torch.nn.Module):
-    def __init__(self, n_channels: int = 128, n_blocks: int = 5):
+    def __init__(self, n_channels: int, n_blocks: int):
         super(AgentModel, self).__init__()
 
         self.input_block = InputBlock(n_channels)

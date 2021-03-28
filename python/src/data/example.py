@@ -1,5 +1,5 @@
 """
-Defines the data format and loading utilities for imitation-learning data.
+Defines the data format and associated utilities for data samples and batches.
 """
 
 from typing import NamedTuple
@@ -20,13 +20,14 @@ class Example(NamedTuple):
     score
         The game's final score for the active player. Shape: [].
         Canonically, the "absolute difference" score.
-    move_mask
-        The target move mask out of this state. Shape: [8, 8].
+    policy_target
+        The (possibly unnormalized) target distribution for policy learning.
+        Shape: [8, 8].
     """
 
     board: torch.Tensor
     score: torch.Tensor
-    move_mask: torch.Tensor
+    policy_target: torch.Tensor
 
     def clone(self) -> "Example":
         return Example(*map(torch.clone, self))
@@ -36,32 +37,32 @@ def augment_square_symmetries(example: Example) -> Example:
     """
     Randomly alter a batch with the symmetries of the square: flips and rotations.
     """
-    board, score, move_mask = example.clone()
+    board, score, policy_target = example.clone()
 
     if torch.rand(1) < 0.5:
         torchvision.transforms.RandomHorizontalFlip()
         board = torchvision.transforms.functional.hflip(board)
-        move_mask = torchvision.transforms.functional.hflip(move_mask)
+        policy_target = torchvision.transforms.functional.hflip(policy_target)
 
     if torch.rand(1) < 0.5:
         board = torchvision.transforms.functional.vflip(board)
-        move_mask = torchvision.transforms.functional.vflip(move_mask)
+        policy_target = torchvision.transforms.functional.vflip(policy_target)
 
     rotations = torch.randint(size=(1,), low=0, high=4).item()
     board = torch.rot90(board, k=rotations, dims=[2, 3])  # type: ignore
-    move_mask = torch.rot90(move_mask, k=rotations, dims=[1, 2])  # type: ignore
+    policy_target = torch.rot90(policy_target, k=rotations, dims=[1, 2])  # type: ignore
 
-    return Example(board, score, move_mask)
+    return Example(board, score, policy_target)
 
 
 def augment_swap_players(example: Example) -> Example:
     """
     Randomly alter a batch by swapping the player roles.
     """
-    board, score, move_mask = example.clone()
+    board, score, policy_target = example.clone()
 
     if torch.rand(1) < 0.5:
         board = board[:, [1, 0], :, :]
         score *= -1
 
-    return Example(board, score, move_mask)
+    return Example(board, score, policy_target)

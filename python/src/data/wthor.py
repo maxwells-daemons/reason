@@ -13,7 +13,7 @@ from typing import Iterator, Tuple
 
 import torch
 from src import game
-from src.data import imitation
+from src.data.example import Example
 
 DB_HEADER_BYTES = 16  # Bytes in the header of a WTHOR database
 GAME_BYTES = 68  # Bytes in a WTHOR game's data
@@ -26,7 +26,7 @@ def parse_move(move_encoding: int) -> Tuple[int, int]:
     return row, col
 
 
-def parse_game(game_bytes: bytes) -> Iterator[imitation.Example]:
+def parse_game(game_bytes: bytes) -> Iterator[Example]:
     assert len(game_bytes) == GAME_BYTES
     move_bytes = game_bytes[GAME_HEADER_BYTES:]
 
@@ -47,7 +47,7 @@ def parse_game(game_bytes: bytes) -> Iterator[imitation.Example]:
         last_state = last_state.apply_move(*move)
 
     for state, move_mask in zip(states, move_masks):
-        yield imitation.Example(
+        yield Example(
             state.board.float(),
             torch.tensor(
                 last_state.score_absolute_difference(state.active_player),
@@ -92,7 +92,7 @@ class WthorDataset(torch.utils.data.IterableDataset):
             yield from self._shard_examples(path)
 
     @staticmethod
-    def _shard_examples(path: str) -> Iterator[imitation.Example]:
+    def _shard_examples(path: str) -> Iterator[Example]:
         with open(path, "rb") as f:
             db_bytes = f.read()
 

@@ -11,7 +11,8 @@ import wandb
 from omegaconf import DictConfig, OmegaConf
 
 from src import ffi
-from src.data import imitation, logistello, utils, wthor
+from src.data import example, logistello, utils, wthor
+from src.data.example import Example
 from src.network import AgentModel
 
 _logger = logging.getLogger(__name__)
@@ -115,12 +116,12 @@ class ImitationData(pl.LightningDataModule):
             combined_data, self._shuffle_buffer_size
         )
 
-    def on_before_batch_transfer(self, batch: imitation.Example, _):
+    def on_before_batch_transfer(self, batch: Example, _):
         if self._augment_square_symmetries:
-            batch = imitation.augment_square_symmetries(batch)
+            batch = example.augment_square_symmetries(batch)
 
         if self._augment_swap_players:
-            batch = imitation.augment_swap_players(batch)
+            batch = example.augment_swap_players(batch)
 
         return batch
 
@@ -169,7 +170,7 @@ class VisualizePredictions(pl.Callback):
         board_img[2] = board[1]  # Opponent's stones are blue
         board_img[1] = ffi.get_move_mask(board.cpu())  # Legal moves are green
 
-        policy_target = outputs["batch"].move_mask[0]
+        policy_target = outputs["batch"].policy_target[0]
         policy_preds = (
             policy_scores[0].flatten(1).softmax(1).view(policy_target.size(0), -1)
         )

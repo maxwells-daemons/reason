@@ -8,10 +8,10 @@ from typing import Iterator, List
 import more_itertools
 import torch
 from src import game
-from src.data import imitation
+from src.data.example import Example
 
 
-def parse_game(line: str) -> Iterator[imitation.Example]:
+def parse_game(line: str) -> Iterator[Example]:
     """
     Parse a Logistello game into a list of examples.
     """
@@ -37,7 +37,7 @@ def parse_game(line: str) -> Iterator[imitation.Example]:
 
     # NOTE: no example for the last board
     for state, move_mask in zip(states, move_masks):
-        yield imitation.Example(
+        yield Example(
             state.board.float(),
             torch.tensor(
                 last_state.score_absolute_difference(state.active_player),

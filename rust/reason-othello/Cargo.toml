@@ -1,8 +1,13 @@
 [package]
 name = "reason-othello"
+description = "An Othello library with a blazing fast bitboard."
 version = "0.1.0"
+repository = "https://github.com/maxwells-daemons/reason/"
 authors = ["Aidan Swope <aidanswope@gmail.com>"]
+license = "MIT"
 edition = "2018"
+categories = ['game-engines']
+keywords = ['othello', 'reversi', 'bitboard']
 
 [lib]
 crate-type = ["cdylib", "lib"]

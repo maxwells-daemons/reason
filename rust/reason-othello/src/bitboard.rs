@@ -1,56 +1,105 @@
-//! Implements low-level bitboard operations. These are fast, but not ergonomic;
-//! prefer to use abstractions under [`game`] if possible.
+//! Low-level bitboard operations.
+//!
+//! For efficiency, [`Bitboard`] operations are unchecked and may cause undefined
+//! behavior if invalid data is passed.
 //!
 //! Under the hood, all these operations work on u64 bitboards. By convention,
 //! the MSB is the upper-left of the board, and uses row-major order.
 
+use crate::{utils, NUM_SPACES};
+use derive_more::{
+    BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, From, Into, Not,
+};
 use packed_simd::{u64x4, u64x8};
+use std::fmt::{self, Display, Formatter};
 
-/// A wrapper type for bitboards, to ensure they aren't mixed with other numeric types.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Default)]
-pub struct Bitboard(pub u64);
+/// Holds a single bit per location on an Othello board.
+/// Wraps [`u64`] for efficient bit-twiddling, but avoids mixing with numerics.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Default,
+    From,
+    Into,
+    BitAnd,
+    BitAndAssign,
+    BitOr,
+    BitOrAssign,
+    BitXor,
+    BitXorAssign,
+    Not,
+)]
+pub struct Bitboard(u64);
 
-/// Compute a mask of the occupied locations on the board.
-#[inline]
-pub fn get_occupancy_mask(player_1: Bitboard, player_2: Bitboard) -> Bitboard {
-    Bitboard(player_1.0 | player_2.0)
+/// Starting bitboard for Black.
+pub const BLACK_START: Bitboard = Bitboard(0x0000000810000000);
+
+/// Starting bitboard for White.
+pub const WHITE_START: Bitboard = Bitboard(0x0000001008000000);
+
+impl Display for Bitboard {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        utils::format_grid(
+            self.into_iter().map(|bit| match bit {
+                false => '.',
+                true => '#',
+            }),
+            f,
+        )
+    }
 }
 
-/// Compute a mask of empty squares on the board.
-#[inline]
-pub fn get_empty_mask(player_1: Bitboard, player_2: Bitboard) -> Bitboard {
-    Bitboard(!(get_occupancy_mask(player_1, player_2).0))
-}
+impl Bitboard {
+    /// Count the number of occupied spaces in the bitboard.
+    #[inline]
+    pub fn count_occupied(self) -> u8 {
+        self.0.count_ones() as u8
+    }
 
-/// Count the number of empty spaces on the board.
-#[inline]
-pub fn count_empties(player_1: Bitboard, player_2: Bitboard) -> u8 {
-    get_occupancy_mask(player_1, player_2).0.count_zeros() as u8
+    /// Count the number of empty spaces in the bitboard.
+    #[inline]
+    pub fn count_empty(self) -> u8 {
+        self.0.count_zeros() as u8
+    }
+
+    /// Return true if this bitboard is empty.
+    #[inline]
+    pub fn is_empty(self) -> bool {
+        self.0 == 0
+    }
 }
 
 /// Score a board as: # my pieces - # opponent pieces.
 /// Faster than [`score_winner_gets_empties()`], but less common.
+/// Undefined behavior if both players have a piece at the same location.
 #[inline]
 pub fn score_absolute_difference(active: Bitboard, opponent: Bitboard) -> i8 {
     (active.0.count_ones() as i8) - (opponent.0.count_ones() as i8)
 }
 
 /// Score a board as: # my spaces - # opponent spaces, where empty spaces are scored for the winner.
+/// Undefined behavior if both players have a piece at the same location.
 #[inline]
 pub fn score_winner_gets_empties(active: Bitboard, opponent: Bitboard) -> i8 {
     let absolute_difference = score_absolute_difference(active, opponent);
 
     if absolute_difference.is_positive() {
-        absolute_difference + (count_empties(active, opponent) as i8)
+        absolute_difference + ((active | opponent).0.count_zeros() as i8)
     } else if absolute_difference.is_negative() {
-        absolute_difference - (count_empties(active, opponent) as i8)
+        absolute_difference - ((active | opponent).0.count_zeros() as i8)
     } else {
         0
     }
 }
 
 /// Compute a mask of the legal moves for the active player from
-/// masks of the active player's stones and the opponent's stones.
+/// masks of the active player's pieces and the opponent's pieces.
+/// Undefined behavior if an invalid Othello board is specified.
 // Algorithm adapted from Sam Blazes' Coin, released under the Apache 2.0 license:
 // https://github.com/Tenebryo/coin/blob/master/bitboard/src/find_moves_fast.rs
 #[inline]
@@ -94,7 +143,7 @@ pub fn get_move_mask(active: Bitboard, opponent: Bitboard) -> Bitboard {
     flip_r |= masks_r & (flip_r >> SHIFTS_4);
 
     // Moves are the union of empties and one extra shift of all flipped locations.
-    let empties = get_empty_mask(active, opponent).0;
+    let empties = !(active | opponent).0;
     let captures_l = (flip_l & masks) << SHIFTS_1;
     let captures_r = (flip_r & masks) >> SHIFTS_1;
 
@@ -103,7 +152,8 @@ pub fn get_move_mask(active: Bitboard, opponent: Bitboard) -> Bitboard {
 
 /// Compute an updated board after a given move is made, returning new bitboards
 /// for the active player and the opponent. `move_mask` must be a one-hot bitboard
-/// indicating the move location; otherwise, the behavior of this function is undefined.
+/// indicating the move location. Undefined behavior if an invalid Othello board
+/// or `move_mask` is provided.
 #[inline]
 pub fn apply_move(
     active: Bitboard,
@@ -183,4 +233,46 @@ pub fn apply_move(
     let new_opponent = Bitboard(opponent.0 ^ flip_mask);
 
     (new_active, new_opponent)
+}
+
+/// Iterator for the bits in a [`Bitboard`].
+#[derive(Clone, Copy, Debug)]
+pub struct Bits {
+    remaining: usize,
+    bitboard: Bitboard,
+}
+
+impl Iterator for Bits {
+    type Item = bool;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            return None;
+        }
+
+        let bitmask = Bitboard::from(1u64 << (self.remaining - 1));
+        let bit = !(self.bitboard & bitmask).is_empty();
+        self.remaining -= 1;
+
+        Some(bit)
+    }
+}
+
+impl ExactSizeIterator for Bits {
+    fn len(&self) -> usize {
+        self.remaining
+    }
+}
+
+/// Iterate over the bits in row-major order.
+impl IntoIterator for Bitboard {
+    type Item = bool;
+    type IntoIter = Bits;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Bits {
+            remaining: NUM_SPACES,
+            bitboard: self,
+        }
+    }
 }

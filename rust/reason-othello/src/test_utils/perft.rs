@@ -1,20 +1,28 @@
-//! "Perft" performance test: count the number of leaves at a given depth.
-//! Useful for tuning bitboard.
-//! See: http://www.aartbik.com/MISC/reversi.html
+//! [Perft](https://www.chessprogramming.org/Perft) performance test:
+//! count the number of game tree leaves at a given depth.
 
-use crate::game::GameState;
+use crate::{bitboard, Board};
 
+/// Run the [Perft](https://www.chessprogramming.org/Perft) performance test,
+/// counting the number of game tree leaves up to `depth`.
 pub fn run_perft(depth: u64) -> u64 {
-    leaves_below(GameState::default(), depth)
+    leaves_below(
+        Board {
+            active_bitboard: bitboard::BLACK_START,
+            opponent_bitboard: bitboard::WHITE_START,
+            just_passed: false,
+        },
+        depth,
+    )
 }
 
-fn leaves_below(game: GameState, depth: u64) -> u64 {
+fn leaves_below(game: Board, depth: u64) -> u64 {
     // Leaf node for this depth
     if depth == 0 {
         return 1;
     }
 
-    let all_moves = game.board.get_moves();
+    let all_moves = game.get_moves();
     if all_moves.is_empty() {
         // Both players passed: game is over
         if game.just_passed {
@@ -29,6 +37,7 @@ fn leaves_below(game: GameState, depth: u64) -> u64 {
         .sum()
 }
 
+// Perft results from: http://www.aartbik.com/MISC/reversi.html
 #[test]
 fn perft_01() {
     assert_eq!(run_perft(1), 4);

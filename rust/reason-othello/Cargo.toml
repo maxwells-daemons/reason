@@ -9,13 +9,4 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 packed_simd = { version = "0.3.4", package = "packed_simd_2" }
-
-[dev-dependencies]
-criterion = { version = "0.3.4", features = ["html_reports"] }
-
-[target.'cfg(unix)'.dev-dependencies]
-pprof = { version = "0.4.2", features = ["flamegraph", "criterion"]}
-
-[[bench]]
-name = "perft"
-harness = false
+derive_more = "0.99.13"

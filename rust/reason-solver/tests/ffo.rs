@@ -1,19 +1,19 @@
-//! Tests on the FFO endgame suite.
+//! Tests on the [`FFO`] endgame suite.
 
 use indicatif::ProgressIterator;
 use reason_othello::test_utils::ffo;
 use reason_solver;
 
 fn ffo_exact(path: &str) {
-    for position in ffo::load_ffo_positions(path).iter().progress() {
-        let score = reason_solver::solve_exact(position.game_state);
+    for position in ffo::load_ffo_positions(path).unwrap().iter().progress() {
+        let score = reason_solver::solve_exact(position.game);
         assert_eq!(score, position.score);
     }
 }
 
 fn ffo_win_loss_draw(path: &str) {
-    for position in ffo::load_ffo_positions(path).iter().progress() {
-        let score = reason_solver::solve_win_loss_draw(position.game_state);
+    for position in ffo::load_ffo_positions(path).unwrap().iter().progress() {
+        let score = reason_solver::solve_win_loss_draw(position.game);
         assert_eq!(score.signum(), position.score.signum());
     }
 }

@@ -1,71 +1,92 @@
-//! Utilities for loading and running the FFO engame suite.
+//! Utilities for loading positions from the
+//! [FFO endgame test suite](http://www.radagast.se/othello/ffotest.html).
 
-use crate::bitboard::Bitboard;
-use crate::game::{Board, GameState, Move, Player};
-use core::panic;
+use crate::game::{Game, Move, ParsePlayerError, Player};
+use crate::{Board, Location, ParseBoardError};
+use derive_more::{Display, Error};
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 
 #[derive(Clone, Copy)]
+/// A single FFO endgame test position.
 pub struct FFOPosition {
-    pub game_state: GameState,
+    pub game: Game,
     pub best_move: Move,
     pub score: i8,
 }
 
-pub fn load_ffo_positions(path: &str) -> Vec<FFOPosition> {
+#[derive(Debug, PartialEq, Error, Display)]
+pub enum LoadFFOError {
+    MissingBoard,
+    CannotParseBoard,
+    CannotParsePlayer,
+    CannotParseMove,
+    CannotParseScore,
+    CannotReadFile,
+}
+
+impl From<ParsePlayerError> for LoadFFOError {
+    fn from(_: ParsePlayerError) -> Self {
+        LoadFFOError::CannotParsePlayer
+    }
+}
+
+impl From<ParseBoardError> for LoadFFOError {
+    fn from(_: ParseBoardError) -> Self {
+        LoadFFOError::CannotParseBoard
+    }
+}
+
+/// Load all of the [`FFOPosition`]s in the file at `path`.
+pub fn load_ffo_positions(path: &str) -> Result<Vec<FFOPosition>, LoadFFOError> {
     let file = File::open(path).unwrap();
     let reader = io::BufReader::new(file);
 
     reader
         .lines()
-        .map(|line| parse_ffo_position(line.unwrap()))
+        .map(|line| line.or(Err(LoadFFOError::CannotReadFile))?.parse())
         .collect()
 }
 
-fn parse_ffo_position(ffo_string: String) -> FFOPosition {
-    let mut sections = ffo_string.split_whitespace();
+impl std::str::FromStr for FFOPosition {
+    type Err = LoadFFOError;
 
-    let board_str = sections.next().unwrap();
-    let player = sections.next().unwrap().to_string().parse().unwrap();
+    fn from_str(ffo_string: &str) -> Result<Self, Self::Err> {
+        let mut sections = ffo_string.split_whitespace();
 
-    let mv = match sections.next().unwrap() {
-        "-1" => Move::PASS,
-        n => Move::from_index(n.parse().unwrap()),
-    };
-    let mut score = sections.next().unwrap().parse().unwrap();
+        let board_str = sections.next().ok_or(LoadFFOError::MissingBoard)?;
 
-    if player == Player::White {
-        score *= -1;
+        let player: Player = sections
+            .next()
+            .ok_or(LoadFFOError::CannotParsePlayer)?
+            .to_string()
+            .parse()?;
+
+        let mv = match sections.next().ok_or(LoadFFOError::CannotParseMove)? {
+            "-1" => Move::Pass,
+            n => Move::Piece(Location::from_index(
+                n.parse().or(Err(LoadFFOError::CannotParseMove))?,
+            )),
+        };
+        let mut score = sections
+            .next()
+            .ok_or(LoadFFOError::CannotParseScore)?
+            .parse()
+            .or(Err(LoadFFOError::CannotParseScore))?;
+
+        let mut board: Board = board_str.parse()?;
+        if player == Player::White {
+            score *= -1;
+            board = board.swap_players();
+        };
+
+        let position = FFOPosition {
+            game: Game::new(board, player),
+            best_move: mv,
+            score,
+        };
+
+        Ok(position)
     }
-
-    FFOPosition {
-        game_state: GameState {
-            board: parse_ffo_board(board_str, player),
-            just_passed: false,
-        },
-        best_move: mv,
-        score,
-    }
-}
-
-fn parse_ffo_board(board_str: &str, player: Player) -> Board {
-    let mut black_bitboard: u64 = 0;
-    let mut white_bitboard: u64 = 0;
-
-    for char in board_str.chars() {
-        black_bitboard <<= 1;
-        white_bitboard <<= 1;
-
-        if char == 'O' {
-            white_bitboard |= 1;
-        } else if char == 'X' {
-            black_bitboard |= 1;
-        } else if char != '-' {
-            panic!("Unknown character in FFO bitboard: {}", char)
-        }
-    }
-
-    Board::from_color_bitboards(Bitboard(black_bitboard), Bitboard(white_bitboard), player)
 }

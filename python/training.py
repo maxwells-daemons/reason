@@ -88,7 +88,6 @@ class ImitationData(pl.LightningDataModule):
         batch_size: int,
         wthor_weight: float,
         augment_square_symmetries: bool,
-        augment_swap_players: bool,
         shuffle_buffer_size: int,
         data_workers: int,
         wthor_glob: str,
@@ -99,7 +98,6 @@ class ImitationData(pl.LightningDataModule):
         self._batch_size = batch_size
         self._wthor_weight = wthor_weight
         self._augment_square_symmetries = augment_square_symmetries
-        self._augment_swap_players = augment_swap_players
         self._shuffle_buffer_size = shuffle_buffer_size
         self._data_workers = data_workers
         self._wthor_glob = wthor_glob
@@ -119,9 +117,6 @@ class ImitationData(pl.LightningDataModule):
     def on_before_batch_transfer(self, batch: Example, _):
         if self._augment_square_symmetries:
             batch = example.augment_square_symmetries(batch)
-
-        if self._augment_swap_players:
-            batch = example.augment_swap_players(batch)
 
         return batch
 

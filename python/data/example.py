@@ -40,7 +40,6 @@ def augment_square_symmetries(example: Example) -> Example:
     board, score, policy_target = example.clone()
 
     if torch.rand(1) < 0.5:
-        torchvision.transforms.RandomHorizontalFlip()
         board = torchvision.transforms.functional.hflip(board)
         policy_target = torchvision.transforms.functional.hflip(policy_target)
 
@@ -51,18 +50,5 @@ def augment_square_symmetries(example: Example) -> Example:
     rotations = torch.randint(size=(1,), low=0, high=4).item()
     board = torch.rot90(board, k=rotations, dims=[2, 3])  # type: ignore
     policy_target = torch.rot90(policy_target, k=rotations, dims=[1, 2])  # type: ignore
-
-    return Example(board, score, policy_target)
-
-
-def augment_swap_players(example: Example) -> Example:
-    """
-    Randomly alter a batch by swapping the player roles.
-    """
-    board, score, policy_target = example.clone()
-
-    if torch.rand(1) < 0.5:
-        board = board[:, [1, 0], :, :]
-        score *= -1
 
     return Example(board, score, policy_target)

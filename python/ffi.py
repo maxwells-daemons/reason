@@ -30,7 +30,7 @@ _LIB_HANDLE.ffi_apply_move.restype = ApplyMoveResult
 
 def _serialize_pieces(pieces: torch.Tensor) -> ctypes.c_uint64:
     bitboard = 0
-    for piece in pieces.view(-1):
+    for piece in pieces.reshape(-1):
         bitboard <<= 1
         if piece:
             bitboard |= 1

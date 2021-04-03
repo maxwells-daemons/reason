@@ -6,14 +6,14 @@ use reason_solver;
 
 fn ffo_exact(path: &str) {
     for position in ffo::load_ffo_positions(path).unwrap().iter().progress() {
-        let score = reason_solver::solve_exact(position.game);
+        let score = reason_solver::solve_exact(position.game.board);
         assert_eq!(score, position.score);
     }
 }
 
 fn ffo_win_loss_draw(path: &str) {
     for position in ffo::load_ffo_positions(path).unwrap().iter().progress() {
-        let score = reason_solver::solve_win_loss_draw(position.game);
+        let score = reason_solver::solve_win_loss_draw(position.game.board);
         assert_eq!(score.signum(), position.score.signum());
     }
 }

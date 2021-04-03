@@ -53,9 +53,13 @@ fn window_fastest_first(board: Board, empties: u8, mut alpha: i8, beta: i8) -> i
 
 /// Window search without move ordering, which is faster for shallow trees.
 fn window_unsorted(board: Board, empties: u8, mut alpha: i8, beta: i8) -> i8 {
+    if empties == 0 {
+        return board.score_absolute_difference();
+    }
+
     let moves = board.get_moves();
-    if moves.is_empty() || empties == 0 {
-        if board.just_passed || empties == 0 {
+    if moves.is_empty() {
+        if board.just_passed {
             return board.score_absolute_difference();
         }
 

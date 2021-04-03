@@ -12,7 +12,7 @@ from python import game
 class InputBlock(torch.nn.Sequential):
     def __init__(self, n_channels: int):
         super(InputBlock, self).__init__(
-            torch.nn.Conv2d(2, n_channels, kernel_size=3, padding=1),
+            torch.nn.Conv2d(2, n_channels, kernel_size=3, padding=1, bias=False),
             torch.nn.BatchNorm2d(n_channels),
             torch.nn.ReLU(),
         )
@@ -22,10 +22,14 @@ class ResidualBlock(torch.nn.Module):
     def __init__(self, n_channels: int):
         super(ResidualBlock, self).__init__()
         self.inner_path = torch.nn.Sequential(
-            torch.nn.Conv2d(n_channels, n_channels, kernel_size=3, padding=1),
+            torch.nn.Conv2d(
+                n_channels, n_channels, kernel_size=3, padding=1, bias=False
+            ),
             torch.nn.BatchNorm2d(n_channels),
             torch.nn.ReLU(),
-            torch.nn.Conv2d(n_channels, n_channels, kernel_size=3, padding=1),
+            torch.nn.Conv2d(
+                n_channels, n_channels, kernel_size=3, padding=1, bias=False
+            ),
             torch.nn.BatchNorm2d(n_channels),
         )
         self.post_residual_activation = torch.nn.ReLU()
@@ -38,7 +42,9 @@ class ResidualBlock(torch.nn.Module):
 class PolicyHead(torch.nn.Sequential):
     def __init__(self, n_channels: int):
         super(PolicyHead, self).__init__(
-            torch.nn.Conv2d(n_channels, n_channels, kernel_size=3, padding=1),
+            torch.nn.Conv2d(
+                n_channels, n_channels, kernel_size=3, padding=1, bias=False
+            ),
             torch.nn.BatchNorm2d(n_channels),
             torch.nn.ReLU(),
             torch.nn.Conv2d(n_channels, 1, kernel_size=1),
@@ -48,7 +54,7 @@ class PolicyHead(torch.nn.Sequential):
 class ValueHead(torch.nn.Sequential):
     def __init__(self, n_channels: int):
         super(ValueHead, self).__init__(
-            torch.nn.Conv2d(n_channels, 1, kernel_size=1),
+            torch.nn.Conv2d(n_channels, 1, kernel_size=1, bias=False),
             torch.nn.BatchNorm2d(1),
             torch.nn.ReLU(),
             torch.nn.Flatten(),

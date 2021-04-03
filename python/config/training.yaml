@@ -2,14 +2,14 @@
 
 # Neural architecture
 model:
-  _target_: src.network.AgentModel
+  _target_: python.network.AgentModel
 
   n_channels: 128
   n_blocks: 3
 
 # Training strategy
 training:
-  _target_: src.training.TrainingModule
+  _target_: python.training.TrainingModule
 
   learning_rate: 1e-4
 
@@ -22,7 +22,7 @@ trainer:
 
 # Data config
 imitation_data:
-  _target_: src.training.ImitationData
+  _target_: python.training.ImitationData
 
   # Data properties
   batch_size: 256
@@ -40,7 +40,7 @@ imitation_data:
 
 # Periodic visualization
 visualize_callback:
-  _target_: src.training.VisualizePredictions
+  _target_: python.training.VisualizePredictions
 
   batch_period: 1000
 

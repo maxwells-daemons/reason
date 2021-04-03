@@ -12,8 +12,8 @@ from glob import glob
 from typing import Iterator, Tuple
 
 import torch
-from src import game
-from src.data.example import Example
+from python import game
+from python.data.example import Example
 
 DB_HEADER_BYTES = 16  # Bytes in the header of a WTHOR database
 GAME_BYTES = 68  # Bytes in a WTHOR game's data

@@ -6,7 +6,7 @@ from typing import Tuple
 
 import torch
 
-from src import game
+from python import game
 
 
 class InputBlock(torch.nn.Sequential):

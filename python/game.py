@@ -8,7 +8,7 @@ from typing import Tuple
 
 import torch
 
-from src import ffi
+from python import ffi
 
 BOARD_EDGE = 8
 BOARD_SPACES = 64

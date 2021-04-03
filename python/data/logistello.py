@@ -7,8 +7,8 @@ from typing import Iterator, List
 
 import more_itertools
 import torch
-from src import game
-from src.data.example import Example
+from python import game
+from python.data.example import Example
 
 
 def parse_game(line: str) -> Iterator[Example]:

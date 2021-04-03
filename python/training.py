@@ -10,10 +10,10 @@ import torch
 import wandb
 from omegaconf import DictConfig, OmegaConf
 
-from src import ffi
-from src.data import example, logistello, utils, wthor
-from src.data.example import Example
-from src.network import AgentModel
+from python import ffi
+from python.data import example, logistello, utils, wthor
+from python.data.example import Example
+from python.network import AgentModel
 
 _logger = logging.getLogger(__name__)
 

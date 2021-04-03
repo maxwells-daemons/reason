@@ -10,7 +10,7 @@ import torchvision
 
 class Example(NamedTuple):
     """
-    An example used for imitation training, or a batch of examples.
+    An example used for agent training, or a batch of examples.
     When batched, all dimensions include a [batch] dimension as their first axis.
 
     Attributes

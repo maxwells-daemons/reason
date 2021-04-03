@@ -2,18 +2,18 @@
 
 use indicatif::ProgressIterator;
 use reason_othello::test_utils::ffo;
-use reason_solver;
+use reason_player;
 
 fn ffo_exact(path: &str) {
     for position in ffo::load_ffo_positions(path).unwrap().iter().progress() {
-        let score = reason_solver::solve_exact(position.game.board);
+        let score = reason_player::solve_exact(position.game.board);
         assert_eq!(score, position.score);
     }
 }
 
 fn ffo_win_loss_draw(path: &str) {
     for position in ffo::load_ffo_positions(path).unwrap().iter().progress() {
-        let score = reason_solver::solve_win_loss_draw(position.game.board);
+        let score = reason_player::solve_win_loss_draw(position.game.board);
         assert_eq!(score.signum(), position.score.signum());
     }
 }

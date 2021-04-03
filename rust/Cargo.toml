@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "reason-othello",
-    "reason-solver"
+    "reason-player"
 ]
 
 [profile.bench]

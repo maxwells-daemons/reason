@@ -49,9 +49,12 @@ def _deserialize_pieces(bitboard: int) -> torch.Tensor:
     return pieces
 
 
-def _validate_board_shape(board: torch.Tensor) -> None:
+def _validate_board(board: torch.Tensor) -> None:
     if board.shape != (2, _BOARD_EDGE, _BOARD_EDGE):
         raise ValueError("Invalid board shape.")
+
+    if board.dtype != torch.bool:
+        raise ValueError("Invalid board type.")
 
 
 def get_move_mask(board: torch.Tensor) -> torch.Tensor:
@@ -59,7 +62,7 @@ def get_move_mask(board: torch.Tensor) -> torch.Tensor:
     Given the active player's pieces and the opponent's pieces,
     get a mask of the legal move locations.
     """
-    _validate_board_shape(board)
+    _validate_board(board)
 
     active_mask = _serialize_pieces(board[0])
     opponent_mask = _serialize_pieces(board[1])
@@ -72,12 +75,12 @@ def apply_move(board: torch.Tensor, row: int, col: int) -> torch.Tensor:
     Given the active player's pieces, the opponent's pieces, and a row and
     column index, compute the new piece masks.
     """
-    _validate_board_shape(board)
+    _validate_board(board)
 
     active_mask = _serialize_pieces(board[0])
     opponent_mask = _serialize_pieces(board[1])
     result: ApplyMoveResult = _LIB_HANDLE.ffi_apply_move(
-        active_mask, opponent_mask, ctypes.c_uint8(col), ctypes.c_uint8(row)
+        active_mask, opponent_mask, ctypes.c_uint8(row), ctypes.c_uint8(col)
     )
 
     active_pieces = _deserialize_pieces(result.new_active_mask)

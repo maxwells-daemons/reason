@@ -190,11 +190,19 @@ class VisualizePredictions(pl.Callback):
         board_img = torch.zeros([3, 8, 8], dtype=float, device="cpu")
         board_img[0] = board[0]  # Active player's stones are red
         board_img[2] = board[1]  # Opponent's stones are blue
-        board_img[1] = ffi.get_move_mask(board.cpu().bool())  # Legal moves are green
 
-        policy_target = outputs["batch"].policy_target[0]
-        policy_preds = (
-            policy_scores[0].flatten(1).softmax(1).view(policy_target.size(0), -1)
+        # Show legal moves in green
+        legal_moves = torch.clone(board_img)
+        legal_moves[1] = ffi.get_move_mask(board.cpu().bool())
+
+        # Show policy target in green
+        policy_target = torch.clone(board_img)
+        policy_target[1] = outputs["batch"].policy_target[0]
+
+        # Show policy predictions in green
+        policy_preds = torch.clone(board_img)
+        policy_preds[1] = (
+            policy_scores[0].flatten(1).softmax(1).view(policy_scores.size(1), -1)
         )
 
         module.logger.experiment.log(
@@ -202,7 +210,9 @@ class VisualizePredictions(pl.Callback):
                 "policy.distribution": wandb.Histogram(policy_scores),
                 "value.distribution": wandb.Histogram(value),
                 "trainer/global_step": trainer.global_step,
-                "visualization/board": wandb.Image(board_img, caption="Board"),
+                "visualization/legal_moves": wandb.Image(
+                    legal_moves, caption="Legal moves"
+                ),
                 "visualization/policy_preds": wandb.Image(
                     policy_preds, caption="Policy probabilities"
                 ),

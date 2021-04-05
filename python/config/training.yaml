@@ -12,6 +12,7 @@ training:
   _target_: python.training.TrainingModule
 
   learning_rate: 1e-4
+  value_target: piece_difference
 
 # Training hardware setup
 trainer:

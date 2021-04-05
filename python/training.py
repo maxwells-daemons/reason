@@ -10,7 +10,7 @@ import torch
 import wandb
 from omegaconf import DictConfig, OmegaConf
 
-from python import ffi
+from python import ffi, game
 from python.data import example, logistello, utils, wthor
 from python.data.example import Example
 from python.network import AgentModel
@@ -21,21 +21,34 @@ _logger = logging.getLogger(__name__)
 class TrainingModule(pl.LightningModule):
     """
     A module with state and functionality needed for optimization during training.
+
+    Parameters
+    ----------
+    learning_rate
+        Learning rate to use.
+    value_target
+        What to train the value function to predict. One of:
+         - 'piece_difference': the game's final piece difference, scaled to -1 to 1.
+         - 'outcome': outcome of the game for the active player.
+           1 for win, -1 for loss, 0 for draw.
     """
 
-    def __init__(self, learning_rate: float, model: AgentModel):
+    def __init__(self, learning_rate: float, value_target: str, model: AgentModel):
+        if value_target not in {"piece_difference", "winner"}:
+            raise ValueError("Unrecognized setting for `value_target`.")
+
         super(TrainingModule, self).__init__()
         _logger.debug("Building training module.")
 
         self.model = model
         self._learning_rate = learning_rate
+        self._value_target = value_target
 
     def forward(self, board):
         return self.model(board)
 
     def training_step(self, batch, _):
         board, target_score, target_move_probs = batch
-        target_outcome = target_score.sign()
 
         policy_scores, value = self(board)
 
@@ -43,10 +56,16 @@ class TrainingModule(pl.LightningModule):
         policy_loss = self._policy_loss(policy_scores, target_move_probs)
         self.log("loss/policy", policy_loss)
 
-        # TODO: try WLD
-        # TODO: try cross-entropy
-        # TODO: try predicting score
-        value_loss = torch.nn.functional.mse_loss(value, target_outcome)
+        # TODO: try WLD classification
+        if self._value_target == "piece_difference":
+            value_target = target_score / game.BOARD_SPACES
+        elif self._value_target == "outcome":
+            value_target = torch.sign(target_score)
+        else:
+            raise AssertionError
+
+        value_loss = torch.nn.functional.mse_loss(value, value_target)
+
         self.log("loss/value", value_loss)
 
         # TODO: loss weighting

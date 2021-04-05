@@ -6,13 +6,19 @@ from typing import Tuple
 
 import torch
 
-from python import game
+from python import game, data
 
 
 class InputBlock(torch.nn.Sequential):
     def __init__(self, n_channels: int):
         super(InputBlock, self).__init__(
-            torch.nn.Conv2d(2, n_channels, kernel_size=3, padding=1, bias=False),
+            torch.nn.Conv2d(
+                data.example.N_BOARD_FEATURES,
+                n_channels,
+                kernel_size=3,
+                padding=1,
+                bias=False,
+            ),
             torch.nn.BatchNorm2d(n_channels),
             torch.nn.ReLU(),
         )

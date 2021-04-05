@@ -114,9 +114,17 @@ class ImitationData(pl.LightningDataModule):
             combined_data, self._shuffle_buffer_size
         )
 
+        self._board_features = example.get_board_features("cpu")
+
     def on_before_batch_transfer(self, batch: Example, _):
+        # Augmentation, if applied
         if self._augment_square_symmetries:
             batch = example.augment_square_symmetries(batch)
+
+        # Add board features, which aren't rotation/flip invariant
+        batch_size = batch.board.size(0)
+        board_features = self._board_features.unsqueeze(0).repeat([batch_size, 1, 1, 1])
+        batch = batch._replace(board=torch.cat([batch.board, board_features], dim=1))
 
         return batch
 
@@ -159,11 +167,11 @@ class VisualizePredictions(pl.Callback):
         value = outputs["value"].detach().cpu()
 
         # Visualize model predictions on the first example in the batch
-        board = outputs["batch"].board[0]
+        board = outputs["batch"].board[0, :2]
         board_img = torch.zeros([3, 8, 8], dtype=float, device="cpu")
         board_img[0] = board[0]  # Active player's stones are red
         board_img[2] = board[1]  # Opponent's stones are blue
-        board_img[1] = ffi.get_move_mask(board.cpu())  # Legal moves are green
+        board_img[1] = ffi.get_move_mask(board.cpu().bool())  # Legal moves are green
 
         policy_target = outputs["batch"].policy_target[0]
         policy_preds = (

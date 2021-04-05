@@ -6,6 +6,10 @@ from typing import NamedTuple
 
 import torch
 import torchvision
+from python import game
+
+# Number of board features, including the 2 piece planes
+N_BOARD_FEATURES = 6
 
 
 class Example(NamedTuple):
@@ -52,3 +56,32 @@ def augment_square_symmetries(example: Example) -> Example:
     policy_target = torch.rot90(policy_target, k=rotations, dims=[1, 2])  # type: ignore
 
     return Example(board, score, policy_target)
+
+
+# TODO:
+#   - X-squares and C-squares
+#   - Legal moves
+#   - Stable pieces
+#   - Frontier pieces
+def get_board_features(device) -> torch.Tensor:
+    positions = torch.linspace(0, 1, game.BOARD_EDGE, dtype=torch.float, device=device)
+    x_positions = positions.unsqueeze(0).repeat([game.BOARD_EDGE, 1])
+    y_positions = positions.unsqueeze(1).repeat([1, game.BOARD_EDGE])
+
+    corner_mask = torch.zeros(
+        [game.BOARD_EDGE, game.BOARD_EDGE], dtype=torch.float, device=device
+    )
+    corner_mask[0, 0] = 1.0
+    corner_mask[0, -1] = 1.0
+    corner_mask[-1, 0] = 1.0
+    corner_mask[-1, -1] = 1.0
+
+    edge_mask = torch.zeros(
+        [game.BOARD_EDGE, game.BOARD_EDGE], dtype=torch.float, device=device
+    )
+    edge_mask[0, :] = 1.0
+    edge_mask[-1, :] = 1.0
+    edge_mask[:, 0] = 1.0
+    edge_mask[:, -1] = 1.0
+
+    return torch.stack([x_positions, y_positions, corner_mask, edge_mask], dim=0)

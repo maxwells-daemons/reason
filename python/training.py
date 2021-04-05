@@ -26,6 +26,8 @@ class TrainingModule(pl.LightningModule):
     ----------
     learning_rate
         Learning rate to use.
+    value_loss_weight
+        Amount to scale value loss relative to policy loss.
     value_target
         What to train the value function to predict. One of:
          - 'piece_difference': the game's final piece difference, scaled to -1 to 1.
@@ -33,7 +35,13 @@ class TrainingModule(pl.LightningModule):
            1 for win, -1 for loss, 0 for draw.
     """
 
-    def __init__(self, learning_rate: float, value_target: str, model: AgentModel):
+    def __init__(
+        self,
+        learning_rate: float,
+        value_loss_weight: float,
+        value_target: str,
+        model: AgentModel,
+    ):
         if value_target not in {"piece_difference", "winner"}:
             raise ValueError("Unrecognized setting for `value_target`.")
 
@@ -42,6 +50,7 @@ class TrainingModule(pl.LightningModule):
 
         self.model = model
         self._learning_rate = learning_rate
+        self._value_loss_weight = value_loss_weight
         self._value_target = value_target
 
     def forward(self, board):
@@ -65,11 +74,9 @@ class TrainingModule(pl.LightningModule):
             raise AssertionError
 
         value_loss = torch.nn.functional.mse_loss(value, value_target)
-
         self.log("loss/value", value_loss)
 
-        # TODO: loss weighting
-        loss = policy_loss + value_loss
+        loss = self._total_loss(policy_loss, value_loss)
         self.log("loss/total", loss)
 
         return {
@@ -86,6 +93,10 @@ class TrainingModule(pl.LightningModule):
         return self._soft_crossentropy(
             policy_scores.flatten(1), target_probs.flatten(1)
         )
+
+    def _total_loss(self, policy_loss, value_loss):
+        unnormalized = policy_loss + (self._value_loss_weight * value_loss)
+        return unnormalized / (1 + self._value_loss_weight)
 
     @staticmethod
     def _soft_crossentropy(predicted_scores, target_probs):

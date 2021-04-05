@@ -12,6 +12,7 @@ training:
   _target_: python.training.TrainingModule
 
   learning_rate: 1e-4
+  value_loss_weight: 20
   value_target: piece_difference
 
 # Training hardware setup
@@ -28,7 +29,7 @@ imitation_data:
   # Data properties
   batch_size: 256
   wthor_weight: 1.0
-  augment_square_symmetries: false # TODO: enable
+  augment_square_symmetries: true
 
   # Misc
   shuffle_buffer_size: 1000

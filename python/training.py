@@ -118,6 +118,51 @@ class TrainingModule(pl.LightningModule):
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self._learning_rate)
 
+    # -- 300 cpu fwd passes on [4, 6, 8, 8], best of 5
+    # Regular model: 1.21s
+    # No-grad: 1.13s
+    # Frozen:  0.71s
+    # Frozen + no-grad + fuser2 + optimized execution ("kitchen sink"): 0.68s
+    # Kitchen sink + dynamic quantization: 0.68s
+    # Kitchen sink + manual fusing: 0.59s
+    # Kitchen sink + manual fusing + static quantization: 0.32s
+    def export_model(
+        self, path: str, quantize: bool, n_calibration_batches: int = 64
+    ) -> None:
+        _logger.info("Starting model export.")
+
+        _logger.debug("Setting up model.")
+        training_mode = self.model.training
+        model = self.model.eval().cpu()
+        model.fuse_inplace()
+
+        if quantize:
+            _logger.debug("Running quantization and calibration.")
+            model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
+            torch.quantization.prepare(model, inplace=True)
+            calibration_batches = iter(self.train_dataloader())
+            for _ in range(n_calibration_batches):
+                model(next(calibration_batches))
+            torch.quantization.convert(model, inplace=True)
+
+        _logger.debug("Tracing and optimizing.")
+        # TODO: move board features into the scripted function as constants
+        with torch.jit.optimized_execution(True), torch.jit.fuser("fuser2"):
+            traced = torch.jit.trace(
+                model,
+                example_inputs=torch.zeros(
+                    [1, example.N_BOARD_FEATURES, game.BOARD_EDGE, game.BOARD_EDGE],
+                    device="cpu",
+                ),
+            )
+            traced = torch.jit.freeze(traced)
+
+        _logger.info("Exporting model script to:", path)
+        traced.save(path)
+
+        # Restore training mode
+        self.model.train(training_mode)
+
     def _total_loss(self, policy_loss, value_loss):
         unnormalized = policy_loss + (self._value_loss_weight * value_loss)
         return unnormalized / (1 + self._value_loss_weight)

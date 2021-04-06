@@ -37,22 +37,20 @@ class TrainingModule(pl.LightningModule):
 
     def __init__(
         self,
+        n_channels: int,
+        n_blocks: int,
         learning_rate: float,
         value_loss_weight: float,
         value_target: str,
-        model: AgentModel,
     ):
         if value_target not in {"piece_difference", "outcome"}:
             raise ValueError("Unrecognized setting for `value_target`.")
 
         super(TrainingModule, self).__init__()
+        self.save_hyperparameters()
         _logger.debug("Building training module.")
 
-        self._learning_rate = learning_rate
-        self._value_loss_weight = value_loss_weight
-        self._value_target = value_target
-
-        self.model = model
+        self.model = AgentModel(n_channels=n_channels, n_blocks=n_blocks)
         self.policy_accuracy = pl.metrics.classification.Accuracy()
         self.value_accuracy = pl.metrics.classification.Accuracy()
 
@@ -80,9 +78,9 @@ class TrainingModule(pl.LightningModule):
 
         # TODO: try WLD classification
         # Value loss and accuracy
-        if self._value_target == "piece_difference":
+        if self.hparams.value_target == "piece_difference":
             value_target = target_score / game.BOARD_SPACES
-        elif self._value_target == "outcome":
+        elif self.hparams.value_target == "outcome":
             value_target = torch.sign(target_score)
         else:
             raise AssertionError
@@ -116,7 +114,7 @@ class TrainingModule(pl.LightningModule):
         }
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self._learning_rate)
+        return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
 
     # -- 300 cpu fwd passes on [4, 6, 8, 8], best of 5
     # Regular model: 1.21s
@@ -164,8 +162,8 @@ class TrainingModule(pl.LightningModule):
         self.model.train(training_mode)
 
     def _total_loss(self, policy_loss, value_loss):
-        unnormalized = policy_loss + (self._value_loss_weight * value_loss)
-        return unnormalized / (1 + self._value_loss_weight)
+        unnormalized = policy_loss + (self.hparams.value_loss_weight * value_loss)
+        return unnormalized / (1 + self.hparams.value_loss_weight)
 
     @staticmethod
     def _soft_crossentropy(predicted_scores, target_probs):
@@ -318,8 +316,7 @@ def train(config: DictConfig):
     )
 
     _logger.info("Initializing model.")
-    model = hydra.utils.instantiate(config.model)
-    training_module = hydra.utils.instantiate(config.training, model=model)
+    training_module = hydra.utils.instantiate(config.model)
 
     _logger.info("Initializing trainer.")
     callbacks = [hydra.utils.instantiate(config.visualize_callback)]

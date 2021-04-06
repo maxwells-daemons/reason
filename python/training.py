@@ -48,10 +48,13 @@ class TrainingModule(pl.LightningModule):
         super(TrainingModule, self).__init__()
         _logger.debug("Building training module.")
 
-        self.model = model
         self._learning_rate = learning_rate
         self._value_loss_weight = value_loss_weight
         self._value_target = value_target
+
+        self.model = model
+        self.policy_accuracy = pl.metrics.classification.Accuracy()
+        self.value_accuracy = pl.metrics.classification.Accuracy()
 
     def forward(self, board):
         return self.model(board)
@@ -59,13 +62,24 @@ class TrainingModule(pl.LightningModule):
     def training_step(self, batch, _):
         board, target_score, target_move_probs = batch
 
+        # Forward pass
         policy_scores, value = self(board)
 
-        # TODO: mask out invalid moves
-        policy_loss = self._policy_loss(policy_scores, target_move_probs)
-        self.log("loss/policy", policy_loss)
+        # Policy loss and accuracy
+        # TODO: try masking out invalid moves
+        policy_scores_flat = policy_scores.flatten(1)
+        target_move_probs_flat = target_move_probs.flatten(1)
+        policy_loss = self._soft_crossentropy(
+            policy_scores_flat, target_move_probs_flat
+        )
+
+        # For policy accuracy, assume the "policy target" is the greedy max
+        policy_probs_flat = policy_scores_flat.softmax(dim=1)
+        policy_argmax_indices = target_move_probs_flat.max(dim=1).indices
+        self.policy_accuracy(policy_probs_flat, policy_argmax_indices)
 
         # TODO: try WLD classification
+        # Value loss and accuracy
         if self._value_target == "piece_difference":
             value_target = target_score / game.BOARD_SPACES
         elif self._value_target == "outcome":
@@ -74,10 +88,25 @@ class TrainingModule(pl.LightningModule):
             raise AssertionError
 
         value_loss = torch.nn.functional.mse_loss(value, value_target)
-        self.log("loss/value", value_loss)
+
+        # "Value accuracy": treat V>0 as predicted win and V<0 as predicted loss;
+        # treat draws as always classified correctly.
+        draws = value_target == 0
+        value_cls_preds = (value >= 0) | draws
+        value_cls_targets = (value_target >= 0) | draws
+        self.value_accuracy(value_cls_preds, value_cls_targets)
 
         loss = self._total_loss(policy_loss, value_loss)
-        self.log("loss/total", loss)
+
+        self.log_dict(
+            {
+                "loss/policy": policy_loss,
+                "loss/value": value_loss,
+                "loss/total": loss,
+                "policy/accuracy_argmax": self.policy_accuracy,
+                "value/accuracy": self.value_accuracy,
+            }
+        )
 
         return {
             "loss": loss,
@@ -88,11 +117,6 @@ class TrainingModule(pl.LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self._learning_rate)
-
-    def _policy_loss(self, policy_scores, target_probs):
-        return self._soft_crossentropy(
-            policy_scores.flatten(1), target_probs.flatten(1)
-        )
 
     def _total_loss(self, policy_loss, value_loss):
         unnormalized = policy_loss + (self._value_loss_weight * value_loss)
@@ -218,8 +242,8 @@ class VisualizePredictions(pl.Callback):
 
         module.logger.experiment.log(
             {
-                "policy.distribution": wandb.Histogram(policy_scores),
-                "value.distribution": wandb.Histogram(value),
+                "policy/distribution": wandb.Histogram(policy_scores),
+                "value/distribution": wandb.Histogram(value),
                 "trainer/global_step": trainer.global_step,
                 "visualization/legal_moves": wandb.Image(
                     legal_moves, caption="Legal moves"

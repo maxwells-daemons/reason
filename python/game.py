@@ -70,7 +70,7 @@ class GameState:
             fmt += str(row + 1) + " "
             for col in range(BOARD_EDGE):
                 if black_squares[row, col]:
-                    fmt += "# "
+                    fmt += "X "
                 elif white_squares[row, col]:
                     fmt += "O "
                 elif moves[row, col]:
@@ -86,6 +86,10 @@ def parse_move(move: str) -> Tuple[int, int]:
     col = "abcdefgh".index(move[0].lower())
     row = int(move[1]) - 1
     return (row, col)
+
+
+def format_move(row: int, col: int) -> str:
+    return "ABCDEFGH"[col] + str(row + 1)
 
 
 def starting_state() -> GameState:

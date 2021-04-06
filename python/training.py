@@ -42,7 +42,7 @@ class TrainingModule(pl.LightningModule):
         value_target: str,
         model: AgentModel,
     ):
-        if value_target not in {"piece_difference", "winner"}:
+        if value_target not in {"piece_difference", "outcome"}:
             raise ValueError("Unrecognized setting for `value_target`.")
 
         super(TrainingModule, self).__init__()

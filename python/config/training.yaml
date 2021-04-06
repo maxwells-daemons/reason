@@ -12,6 +12,7 @@ model:
   learning_rate: 1e-4
   value_loss_weight: 2
   value_target: outcome
+  mask_invalid_moves: true
 
 # Training hardware setup
 trainer:

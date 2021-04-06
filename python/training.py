@@ -10,7 +10,8 @@ import torch
 import wandb
 from omegaconf import DictConfig, OmegaConf
 
-from python import ffi, game
+from python import game
+from python import utils as py_utils
 from python.data import example, logistello, utils, wthor
 from python.data.example import Example
 from python.network import AgentModel
@@ -33,6 +34,8 @@ class TrainingModule(pl.LightningModule):
          - 'piece_difference': the game's final piece difference, scaled to -1 to 1.
          - 'outcome': outcome of the game for the active player.
            1 for win, -1 for loss, 0 for draw.
+    mask_invalid_moves
+        Whether to mask out invalid moves before computing the policy loss.
     """
 
     def __init__(
@@ -42,6 +45,7 @@ class TrainingModule(pl.LightningModule):
         learning_rate: float,
         value_loss_weight: float,
         value_target: str,
+        mask_invalid_moves: bool,
     ):
         if value_target not in {"piece_difference", "outcome"}:
             raise ValueError("Unrecognized setting for `value_target`.")
@@ -51,30 +55,38 @@ class TrainingModule(pl.LightningModule):
         _logger.debug("Building training module.")
 
         self.model = AgentModel(n_channels=n_channels, n_blocks=n_blocks)
-        self.policy_accuracy = pl.metrics.classification.Accuracy()
         self.value_accuracy = pl.metrics.classification.Accuracy()
 
     def forward(self, board):
         return self.model(board)
 
     def training_step(self, batch, _):
-        board, target_score, target_move_probs = batch
+        board, target_score, target_move_probs, valid_move_mask = batch
 
         # Forward pass
         policy_scores, value = self(board)
 
         # Policy loss and accuracy
-        # TODO: try masking out invalid moves
         policy_scores_flat = policy_scores.flatten(1)
         target_move_probs_flat = target_move_probs.flatten(1)
-        policy_loss = self._soft_crossentropy(
-            policy_scores_flat, target_move_probs_flat
+        policy_logprobs_flat = py_utils.masked_log_softmax(
+            policy_scores_flat,
+            valid_move_mask.flatten(1) if self.hparams.mask_invalid_moves else None,
+        )
+
+        policy_loss = py_utils.soft_crossentropy(
+            policy_logprobs_flat, target_move_probs_flat
         )
 
         # For policy accuracy, assume the "policy target" is the greedy max
-        policy_probs_flat = policy_scores_flat.softmax(dim=1)
-        policy_argmax_indices = target_move_probs_flat.max(dim=1).indices
-        self.policy_accuracy(policy_probs_flat, policy_argmax_indices)
+        policy_accuracy = (
+            (
+                policy_logprobs_flat.max(dim=1).indices
+                == target_move_probs_flat.max(dim=1).indices
+            )
+            .float()
+            .mean()
+        )
 
         # TODO: try WLD classification
         # Value loss and accuracy
@@ -101,14 +113,14 @@ class TrainingModule(pl.LightningModule):
                 "loss/policy": policy_loss,
                 "loss/value": value_loss,
                 "loss/total": loss,
-                "policy/accuracy_argmax": self.policy_accuracy,
+                "policy/accuracy_argmax": policy_accuracy,
                 "value/accuracy": self.value_accuracy,
             }
         )
 
         return {
             "loss": loss,
-            "policy_scores": policy_scores,
+            "policy_scores_flat": policy_scores_flat,
             "value": value,
             "batch": batch,
         }
@@ -164,14 +176,6 @@ class TrainingModule(pl.LightningModule):
     def _total_loss(self, policy_loss, value_loss):
         unnormalized = policy_loss + (self.hparams.value_loss_weight * value_loss)
         return unnormalized / (1 + self.hparams.value_loss_weight)
-
-    @staticmethod
-    def _soft_crossentropy(predicted_scores, target_probs):
-        """
-        Cross-entropy loss capable of handling soft target probabilities.
-        """
-        predicted_logprobs = torch.nn.functional.log_softmax(predicted_scores, dim=1)
-        return -(target_probs * predicted_logprobs).sum(1).mean(0)
 
 
 class ImitationData(pl.LightningDataModule):
@@ -260,8 +264,6 @@ class VisualizePredictions(pl.Callback):
             return
 
         outputs = outputs[0][0]["extra"]
-        policy_scores = outputs["policy_scores"].detach().cpu()
-        value = outputs["value"].detach().cpu()
 
         # Visualize model predictions on the first example in the batch
         board = outputs["batch"].board[0, :2]
@@ -271,22 +273,28 @@ class VisualizePredictions(pl.Callback):
 
         # Show legal moves in green
         legal_moves = torch.clone(board_img)
-        legal_moves[1] = ffi.get_move_mask(board.cpu().bool())
+        legal_moves[1] = outputs["batch"].move_mask[0].detach().cpu()
 
         # Show policy target in green
         policy_target = torch.clone(board_img)
         policy_target[1] = outputs["batch"].policy_target[0]
 
         # Show policy predictions in green
+        policy_scores_flat = outputs["policy_scores_flat"].detach().cpu()
+        if module.hparams.mask_invalid_moves:
+            move_mask_flat = outputs["batch"].move_mask.flatten(1).detach().cpu()
+            policy_scores_flat[~move_mask_flat] = float("-inf")
+        policy_probs_flat = policy_scores_flat.softmax(1)
+
         policy_preds = torch.clone(board_img)
-        policy_preds[1] = (
-            policy_scores[0].flatten(1).softmax(1).view(policy_scores.size(1), -1)
+        policy_preds[1] = policy_probs_flat[0].reshape(
+            [game.BOARD_EDGE, game.BOARD_EDGE]
         )
 
         module.logger.experiment.log(
             {
-                "policy/distribution": wandb.Histogram(policy_scores),
-                "value/distribution": wandb.Histogram(value),
+                "policy/distribution": wandb.Histogram(policy_probs_flat),
+                "value/distribution": wandb.Histogram(outputs["value"].detach().cpu()),
                 "trainer/global_step": trainer.global_step,
                 "visualization/legal_moves": wandb.Image(
                     legal_moves, caption="Legal moves"

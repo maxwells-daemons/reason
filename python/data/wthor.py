@@ -12,7 +12,7 @@ from glob import glob
 from typing import Iterator, Tuple
 
 import torch
-from python import game
+from python import game, ffi
 from python.data.example import Example
 
 DB_HEADER_BYTES = 16  # Bytes in the header of a WTHOR database
@@ -54,6 +54,7 @@ def parse_game(game_bytes: bytes) -> Iterator[Example]:
                 dtype=torch.float,
             ),
             move_mask.float(),
+            ffi.get_move_mask(state.board),
         )
 
 

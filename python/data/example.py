@@ -27,11 +27,14 @@ class Example(NamedTuple):
     policy_target
         The (possibly unnormalized) target distribution for policy learning.
         Shape: [8, 8].
+    move_mask
+        A mask of the valid moves on the board. Shape: [8, 8].
     """
 
     board: torch.Tensor
     score: torch.Tensor
     policy_target: torch.Tensor
+    move_mask: torch.Tensor
 
     def clone(self) -> "Example":
         return Example(*map(torch.clone, self))
@@ -41,21 +44,24 @@ def augment_square_symmetries(example: Example) -> Example:
     """
     Randomly alter a batch with the symmetries of the square: flips and rotations.
     """
-    board, score, policy_target = example.clone()
+    board, score, policy_target, move_mask = example.clone()
 
     if torch.rand(1) < 0.5:
         board = torchvision.transforms.functional.hflip(board)
         policy_target = torchvision.transforms.functional.hflip(policy_target)
+        move_mask = torchvision.transforms.functional.hflip(move_mask)
 
     if torch.rand(1) < 0.5:
         board = torchvision.transforms.functional.vflip(board)
         policy_target = torchvision.transforms.functional.vflip(policy_target)
+        move_mask = torchvision.transforms.functional.vflip(move_mask)
 
     rotations = torch.randint(size=(1,), low=0, high=4).item()
     board = torch.rot90(board, k=rotations, dims=[2, 3])  # type: ignore
     policy_target = torch.rot90(policy_target, k=rotations, dims=[1, 2])  # type: ignore
+    move_mask = torch.rot90(move_mask, k=rotations, dims=[1, 2])  # type: ignore
 
-    return Example(board, score, policy_target)
+    return Example(board, score, policy_target, move_mask)
 
 
 # TODO:

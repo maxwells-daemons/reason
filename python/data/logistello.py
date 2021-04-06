@@ -7,7 +7,7 @@ from typing import Iterator, List
 
 import more_itertools
 import torch
-from python import game
+from python import game, ffi
 from python.data.example import Example
 
 
@@ -44,6 +44,7 @@ def parse_game(line: str) -> Iterator[Example]:
                 dtype=torch.float,
             ),
             move_mask.float(),
+            ffi.get_move_mask(state.board),
         )
 
 

@@ -63,6 +63,26 @@ impl Game {
             Some(!self.active_player)
         }
     }
+
+    /// Score the game for `player` as the absolute piece count difference.
+    /// Faster than [`Self::score_winner_gets_empties()`], but less common.
+    pub fn score_absolute_difference(self, player: Player) -> i8 {
+        if player == self.active_player {
+            self.board.score_absolute_difference()
+        } else {
+            -1 * self.board.score_absolute_difference()
+        }
+    }
+
+    /// Score the board for `player` as as the piece count difference
+    /// where empty spaces are scored for the winner.
+    pub fn score_winner_gets_empties(self, player: Player) -> i8 {
+        if player == self.active_player {
+            self.board.score_winner_gets_empties()
+        } else {
+            self.board.pass().score_winner_gets_empties()
+        }
+    }
 }
 #[derive(Debug, PartialEq, Error, Display)]
 pub struct InvalidMoveError;

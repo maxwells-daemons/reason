@@ -28,6 +28,12 @@ impl Location {
         Self(bitboard)
     }
 
+    /// Convert into a one-hot [`Bitboard`].
+    #[inline]
+    pub fn to_onehot(self) -> Bitboard {
+        self.0
+    }
+
     /// Convert from a row-major square index.
     #[inline]
     pub fn from_index(index: u8) -> Self {

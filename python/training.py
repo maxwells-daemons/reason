@@ -10,9 +10,8 @@ import torch
 import wandb
 from omegaconf import DictConfig, OmegaConf
 
-from python import game
-from python import utils as py_utils
-from python.data import example, logistello, utils, wthor
+from python import game, utils
+from python.data import example, logistello, wthor
 from python.data.example import Example
 from python.network import AgentModel
 
@@ -69,12 +68,12 @@ class TrainingModule(pl.LightningModule):
         # Policy loss and accuracy
         policy_scores_flat = policy_scores.flatten(1)
         target_move_probs_flat = target_move_probs.flatten(1)
-        policy_logprobs_flat = py_utils.masked_log_softmax(
+        policy_logprobs_flat = utils.masked_log_softmax(
             policy_scores_flat,
             valid_move_mask.flatten(1) if self.hparams.mask_invalid_moves else None,
         )
 
-        policy_loss = py_utils.soft_crossentropy(
+        policy_loss = utils.soft_crossentropy(
             policy_logprobs_flat, target_move_probs_flat
         )
 

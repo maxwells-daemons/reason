@@ -23,7 +23,7 @@ trainer:
 
 # Data config
 imitation_data:
-  _target_: python.training.ImitationData
+  _target_: python.data.imitation.ImitationData
 
   # Data properties
   batch_size: 256
@@ -42,7 +42,7 @@ imitation_data:
 
 # Periodic visualization
 visualize_callback:
-  _target_: python.training.VisualizePredictions
+  _target_: python.utils.VisualizePredictions
 
   batch_period: 1000
 

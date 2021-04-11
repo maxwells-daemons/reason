@@ -1,4 +1,8 @@
+import pytorch_lightning as pl
 import torch
+import wandb
+
+from python import game
 
 
 # From: https://github.com/allenai/allennlp/blob/b6cc9d39651273e8ec2a7e334908ffa9de5c2026/allennlp/nn/util.py#L272-L303,
@@ -41,3 +45,63 @@ def soft_crossentropy(predicted_logprobs, target_probs):
     Cross-entropy loss capable of handling soft target probabilities.
     """
     return -(target_probs * predicted_logprobs).sum(1).mean(0)
+
+
+class VisualizePredictions(pl.Callback):
+    """
+    Periodically visualize the distribution of model predictions on training data.
+    """
+
+    def __init__(self, batch_period: int):
+        self._batch_period = batch_period
+
+    def on_train_batch_end(
+        self, trainer, module, outputs, batch, batch_idx, dataloader_idx
+    ):
+        if batch_idx % self._batch_period:
+            return
+
+        outputs = outputs[0][0]["extra"]
+
+        # Visualize model predictions on the first example in the batch
+        board = outputs["batch"].board[0, :2]
+        board_img = torch.zeros([3, 8, 8], dtype=float, device="cpu")
+        board_img[0] = board[0]  # Active player's stones are red
+        board_img[2] = board[1]  # Opponent's stones are blue
+
+        # Show legal moves in green
+        legal_moves = torch.clone(board_img)
+        legal_moves[1] = outputs["batch"].move_mask[0].detach().cpu()
+
+        # Show policy target in green
+        policy_target = torch.clone(board_img)
+        policy_target[1] = outputs["batch"].policy_target[0]
+
+        # Show policy predictions in green
+        policy_scores_flat = outputs["policy_scores_flat"].detach().cpu()
+        if module.hparams.mask_invalid_moves:
+            move_mask_flat = outputs["batch"].move_mask.flatten(1).detach().cpu()
+            policy_scores_flat[~move_mask_flat] = float("-inf")
+        policy_probs_flat = policy_scores_flat.softmax(1)
+
+        policy_preds = torch.clone(board_img)
+        policy_preds[1] = policy_probs_flat[0].reshape(
+            [game.BOARD_EDGE, game.BOARD_EDGE]
+        )
+
+        module.logger.experiment.log(
+            {
+                "policy/distribution": wandb.Histogram(policy_probs_flat),
+                "value/distribution": wandb.Histogram(outputs["value"].detach().cpu()),
+                "trainer/global_step": trainer.global_step,
+                "visualization/legal_moves": wandb.Image(
+                    legal_moves, caption="Legal moves"
+                ),
+                "visualization/policy_preds": wandb.Image(
+                    policy_preds, caption="Policy probabilities"
+                ),
+                "visualization/policy_target": wandb.Image(
+                    policy_target, caption="Target probabilities"
+                ),
+            }
+        )

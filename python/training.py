@@ -3,26 +3,17 @@ Defines the training strategy.
 """
 
 import logging
-from typing import List
 
 import hydra
-import numpy as np
 import pytorch_lightning as pl
 import torch
-import wandb
 from omegaconf import DictConfig, OmegaConf
 
 from python import game, utils
 from python.data import example
-from python.data.example import Example
 from python.network import AgentModel
 
 _logger = logging.getLogger(__name__)
-
-
-# Hardcoded for experiment repeatability
-RANDOM_SEED = 1337
-VAL_FRAC = 0.1
 
 
 class TrainingModule(pl.LightningModule):
@@ -196,156 +187,6 @@ class TrainingModule(pl.LightningModule):
     def _total_loss(self, policy_loss, value_loss):
         unnormalized = policy_loss + (self.hparams.value_loss_weight * value_loss)
         return unnormalized / (1 + self.hparams.value_loss_weight)
-
-
-# TODO: move somewhere else
-class CompressedGameDataset(torch.utils.data.Dataset):
-    def __init__(
-        self,
-        data: np.ndarray,
-        augment_square_symmetries: bool,
-    ):
-        self._data = data
-        self._augment_square_symmetries = augment_square_symmetries
-        self._board_features = example.get_board_features("cpu")
-
-    def __getitem__(self, index) -> Example:
-        ex = Example.decompress(self._data[index])
-
-        if self._augment_square_symmetries:
-            ex = example.augment_square_symmetries(ex)
-
-        # Add board features, which aren't rotation/flip invariant
-        ex = ex._replace(board=torch.cat([ex.board, self._board_features], dim=0))
-
-        return ex
-
-    def __len__(self):
-        return self._data.shape[0]
-
-
-# TODO: support sampling ratios
-class ImitationData(pl.LightningDataModule):
-    """
-    A DataModule which samples from Logistello and WTHOR data and applies data
-    augmentation.
-    """
-
-    def __init__(
-        self,
-        data_paths: List[str],
-        batch_size: int,
-        augment_square_symmetries: bool,
-        data_workers: int,
-    ):
-        super().__init__()
-        self._data_paths = data_paths
-        self._batch_size = batch_size
-        self._augment_square_symmetries = augment_square_symmetries
-        self._data_workers = data_workers
-
-    def setup(self, stage=None):
-        _logger.debug("Loading imitation training dataset.")
-        data_by_path = [np.load(path) for path in self._data_paths]
-        all_data = np.concatenate(data_by_path, axis=0)
-
-        # Take the first VAL_FRAC positions as validation data.
-        # Don't split randomly, because outcomes within games are correlated.
-        # NOTE: this means the order of `data_paths` matters.
-        val_lines = int(all_data.shape[0] * VAL_FRAC)
-        val_data = all_data[:val_lines, :]
-        train_data = all_data[val_lines:, :]
-
-        # Pre-shuffle data
-        rng = np.random.default_rng(seed=RANDOM_SEED)
-        rng.shuffle(train_data)
-        rng.shuffle(val_data)
-
-        # Build datasets
-        self._train_ds = CompressedGameDataset(
-            train_data, self._augment_square_symmetries
-        )
-        self._val_ds = CompressedGameDataset(val_data, False)  # Don't augment val data
-
-        _logger.info(
-            f"Loaded {train_data.shape[0]} training positions and {val_data.shape[0]} validation positions."
-        )
-
-    def train_dataloader(self):
-        return torch.utils.data.DataLoader(
-            self._train_ds,
-            self._batch_size,
-            num_workers=self._data_workers,
-            pin_memory=True,
-        )
-
-    def val_dataloader(self):
-        return torch.utils.data.DataLoader(
-            self._val_ds,
-            self._batch_size,
-            num_workers=self._data_workers,
-            pin_memory=True,
-        )
-
-
-class VisualizePredictions(pl.Callback):
-    """
-    Periodically visualize the distribution of model predictions on training data.
-    """
-
-    def __init__(self, batch_period: int):
-        self._batch_period = batch_period
-
-    def on_train_batch_end(
-        self, trainer, module, outputs, batch, batch_idx, dataloader_idx
-    ):
-        if batch_idx % self._batch_period:
-            return
-
-        outputs = outputs[0][0]["extra"]
-
-        # Visualize model predictions on the first example in the batch
-        board = outputs["batch"].board[0, :2]
-        board_img = torch.zeros([3, 8, 8], dtype=float, device="cpu")
-        board_img[0] = board[0]  # Active player's stones are red
-        board_img[2] = board[1]  # Opponent's stones are blue
-
-        # Show legal moves in green
-        legal_moves = torch.clone(board_img)
-        legal_moves[1] = outputs["batch"].move_mask[0].detach().cpu()
-
-        # Show policy target in green
-        policy_target = torch.clone(board_img)
-        policy_target[1] = outputs["batch"].policy_target[0]
-
-        # Show policy predictions in green
-        policy_scores_flat = outputs["policy_scores_flat"].detach().cpu()
-        if module.hparams.mask_invalid_moves:
-            move_mask_flat = outputs["batch"].move_mask.flatten(1).detach().cpu()
-            policy_scores_flat[~move_mask_flat] = float("-inf")
-        policy_probs_flat = policy_scores_flat.softmax(1)
-
-        policy_preds = torch.clone(board_img)
-        policy_preds[1] = policy_probs_flat[0].reshape(
-            [game.BOARD_EDGE, game.BOARD_EDGE]
-        )
-
-        module.logger.experiment.log(
-            {
-                "policy/distribution": wandb.Histogram(policy_probs_flat),
-                "value/distribution": wandb.Histogram(outputs["value"].detach().cpu()),
-                "trainer/global_step": trainer.global_step,
-                "visualization/legal_moves": wandb.Image(
-                    legal_moves, caption="Legal moves"
-                ),
-                "visualization/policy_preds": wandb.Image(
-                    policy_preds, caption="Policy probabilities"
-                ),
-                "visualization/policy_target": wandb.Image(
-                    policy_target, caption="Target probabilities"
-                ),
-            }
-        )
 
 
 @hydra.main(config_path="config", config_name="training")

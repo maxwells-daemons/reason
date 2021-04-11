@@ -61,15 +61,15 @@ class TrainingModule(pl.LightningModule):
         _logger.debug("Building training module.")
 
         self.model = AgentModel(n_channels=n_channels, n_blocks=n_blocks)
-        self.value_accuracy = pl.metrics.classification.Accuracy()
 
     def forward(self, board):
         return self.model(board)
 
-    def training_step(self, batch, _):
-        board, target_score, target_move_probs, valid_move_mask = batch
+    def _shared_step(self, batch, log_suffix):
+        """Do work common to `training_step` and `validation_step`."""
 
         # Forward pass
+        board, target_score, target_move_probs, valid_move_mask = batch
         policy_scores, value = self(board)
 
         # Policy loss and accuracy
@@ -110,38 +110,48 @@ class TrainingModule(pl.LightningModule):
         draws = value_target == 0
         value_cls_preds = (value >= 0) | draws
         value_cls_targets = (value_target >= 0) | draws
-        self.value_accuracy(value_cls_preds, value_cls_targets)
+        value_accuracy = (value_cls_preds == value_cls_targets).float().mean()
 
+        # Total loss
         loss = self._total_loss(policy_loss, value_loss)
 
+        # Log with a suffix
         self.log_dict(
             {
-                "loss/policy": policy_loss,
-                "loss/value": value_loss,
-                "loss/total": loss,
-                "policy/accuracy_argmax": policy_accuracy,
-                "value/accuracy": self.value_accuracy,
+                f"loss/policy.{log_suffix}": policy_loss,
+                f"loss/value.{log_suffix}": value_loss,
+                f"loss/total.{log_suffix}": loss,
+                f"policy/accuracy.{log_suffix}": policy_accuracy,
+                f"value/accuracy.{log_suffix}": value_accuracy,
             }
         )
 
         return {
             "loss": loss,
-            "policy_scores_flat": policy_scores_flat.float(),
-            "value": value.float(),
+            "policy_scores_flat": policy_scores_flat,
+            "policy_loss": policy_loss,
+            "policy_accuracy": policy_accuracy,
+            "value": value,
+            "value_loss": value_loss,
+            "value_accuracy": value_accuracy,
+        }
+
+    def training_step(self, batch, _):
+        shared_outs = self._shared_step(batch, log_suffix="training")
+
+        return {
+            "loss": shared_outs["loss"],
+            "policy_scores_flat": shared_outs["policy_scores_flat"].float(),
+            "value": shared_outs["value"].float(),
             "batch": batch,
         }
+
+    def validation_step(self, batch, _):
+        self._shared_step(batch, log_suffix="validation")
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
 
-    # -- 300 cpu fwd passes on [4, 6, 8, 8], best of 5
-    # Regular model: 1.21s
-    # No-grad: 1.13s
-    # Frozen:  0.71s
-    # Frozen + no-grad + fuser2 + optimized execution ("kitchen sink"): 0.68s
-    # Kitchen sink + dynamic quantization: 0.68s
-    # Kitchen sink + manual fusing: 0.59s
-    # Kitchen sink + manual fusing + static quantization: 0.32s
     def export_model(
         self, path: str, quantize: bool, n_calibration_batches: int = 64
     ) -> None:
@@ -235,11 +245,17 @@ class ImitationData(pl.LightningDataModule):
         data_by_path = [np.load(path) for path in self._data_paths]
         all_data = np.concatenate(data_by_path, axis=0)
 
-        # Split data randomly into training and validation sets
-        np.random.default_rng(seed=RANDOM_SEED).shuffle(all_data)
+        # Take the first VAL_FRAC positions as validation data.
+        # Don't split randomly, because outcomes within games are correlated.
+        # NOTE: this means the order of `data_paths` matters.
         val_lines = int(all_data.shape[0] * VAL_FRAC)
         val_data = all_data[:val_lines, :]
         train_data = all_data[val_lines:, :]
+
+        # Pre-shuffle data
+        rng = np.random.default_rng(seed=RANDOM_SEED)
+        rng.shuffle(train_data)
+        rng.shuffle(val_data)
 
         # Build datasets
         self._train_ds = CompressedGameDataset(
@@ -251,10 +267,17 @@ class ImitationData(pl.LightningDataModule):
             f"Loaded {train_data.shape[0]} training positions and {val_data.shape[0]} validation positions."
         )
 
-    # TODO: val loader
     def train_dataloader(self):
         return torch.utils.data.DataLoader(
             self._train_ds,
+            self._batch_size,
+            num_workers=self._data_workers,
+            pin_memory=True,
+        )
+
+    def val_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self._val_ds,
             self._batch_size,
             num_workers=self._data_workers,
             pin_memory=True,

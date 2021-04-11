@@ -1,4 +1,4 @@
-//! Internal search functions.
+//! Internal search functions for the endgame solver.
 
 use arrayvec::ArrayVec;
 use reason_othello::Board;

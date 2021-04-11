@@ -5,6 +5,7 @@ Defines the training strategy.
 import logging
 
 import hydra
+import numpy as np
 import pytorch_lightning as pl
 import torch
 from omegaconf import DictConfig, OmegaConf
@@ -40,6 +41,7 @@ class TrainingModule(pl.LightningModule):
         n_channels: int,
         n_blocks: int,
         learning_rate: float,
+        lr_warmup_steps: int,
         value_loss_weight: float,
         value_target: str,
         mask_invalid_moves: bool,
@@ -146,6 +148,30 @@ class TrainingModule(pl.LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+
+    def optimizer_step(
+        self,
+        epoch,
+        batch_idx,
+        optimizer,
+        optimizer_idx,
+        optimizer_closure,
+        on_tpu,
+        using_native_amp,
+        using_lbfgs,
+    ):
+
+        # LR warmup
+        warmup_frac = self.trainer.global_step / self.hparams.lr_warmup_steps
+        warmed_lr = np.clip(warmup_frac, 0.0, 1.0) * self.hparams.learning_rate
+        for group in optimizer.param_groups:
+            group["lr"] = warmed_lr
+
+        self.logger.experiment.log({"trainer/learning_rate": warmed_lr})
+
+        # Actual optimizer step
+        optimizer.step(closure=optimizer_closure)
+        optimizer.zero_grad()
 
     def export_model(
         self, path: str, quantize: bool, n_calibration_batches: int = 64

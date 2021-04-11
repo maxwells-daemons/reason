@@ -5,6 +5,7 @@ Defines the training strategy.
 import logging
 
 import hydra
+import numpy as np
 import pytorch_lightning as pl
 import torch
 import wandb
@@ -16,6 +17,9 @@ from python.data.example import Example
 from python.network import AgentModel
 
 _logger = logging.getLogger(__name__)
+
+
+RANDOM_SEED = 1337
 
 
 class TrainingModule(pl.LightningModule):
@@ -119,8 +123,8 @@ class TrainingModule(pl.LightningModule):
 
         return {
             "loss": loss,
-            "policy_scores_flat": policy_scores_flat,
-            "value": value,
+            "policy_scores_flat": policy_scores_flat.float(),
+            "value": value.float(),
             "batch": batch,
         }
 
@@ -177,41 +181,62 @@ class TrainingModule(pl.LightningModule):
         return unnormalized / (1 + self.hparams.value_loss_weight)
 
 
+# TODO: move somewhere else
+# TODO: support sampling ratios
+class CompressedGameDataset(torch.utils.data.Dataset):
+    def __init__(self, wthor_data: np.ndarray, logistello_data: np.ndarray):
+        self._wthor_data = wthor_data
+        self._logistello_data = logistello_data
+
+    def __getitem__(self, index) -> Example:
+        wthor_lines = self._wthor_data.shape[0]
+
+        if index < wthor_lines:
+            compressed = self._wthor_data[index]
+        else:
+            compressed = self._logistello_data[index - wthor_lines]
+
+        return Example.decompress(compressed)
+
+    def __len__(self):
+        return self._wthor_data.shape[0] + self._logistello_data.shape[0]
+
+
 class ImitationData(pl.LightningDataModule):
     """
-    A DataModule which samples from Logistello and WTHOR data, applies data
-    augmentation, and buffer-shuffles.
+    A DataModule which samples from Logistello and WTHOR data and applies data
+    augmentation.
     """
 
     def __init__(
         self,
+        wthor_data_path: str,
+        logistello_data_path: str,
+        val_frac: float,
         batch_size: int,
-        wthor_weight: float,
         augment_square_symmetries: bool,
-        shuffle_buffer_size: int,
         data_workers: int,
-        wthor_glob: str,
-        logistello_path: str,
     ):
         super().__init__()
-
+        self._wthor_data_path = wthor_data_path
+        self._logistello_data_path = logistello_data_path
+        self._val_frac = val_frac
         self._batch_size = batch_size
-        self._wthor_weight = wthor_weight
         self._augment_square_symmetries = augment_square_symmetries
-        self._shuffle_buffer_size = shuffle_buffer_size
         self._data_workers = data_workers
-        self._wthor_glob = wthor_glob
-        self._logistello_path = logistello_path
 
     def setup(self, stage=None):
-        _logger.debug("Building imitation training dataset.")
-        wthor_data = wthor.WthorDataset(self._wthor_glob)
-        logistello_data = logistello.LogistelloDataset(self._logistello_path)
-        combined_data = utils.SamplingDataset(
-            [(wthor_data, self._wthor_weight), (logistello_data, 1.0)]
-        )
-        self._dataset = torch.utils.data.BufferedShuffleDataset(
-            combined_data, self._shuffle_buffer_size
+        _logger.debug("Loading imitation training dataset.")
+
+        wthor_data = np.load(self._wthor_data_path)
+        logistello_data = np.load(self._logistello_data_path)
+        data = CompressedGameDataset(wthor_data, logistello_data)
+
+        val_lines = int(len(data) * self._val_frac)
+        self._train_ds, self._val_ds = torch.utils.data.random_split(
+            data,
+            [len(data) - val_lines, val_lines],
+            generator=torch.Generator().manual_seed(RANDOM_SEED),
         )
 
         self._board_features = example.get_board_features("cpu")
@@ -228,24 +253,14 @@ class ImitationData(pl.LightningDataModule):
 
         return batch
 
+    # TODO: val loader
     def train_dataloader(self):
-        if self._data_workers == 0:
-            self.set_random_seed(0)
-            return torch.utils.data.DataLoader(
-                self._dataset, self._batch_size, pin_memory=True
-            )
-
         return torch.utils.data.DataLoader(
-            self._dataset,
+            self._train_ds,
             self._batch_size,
             num_workers=self._data_workers,
-            worker_init_fn=self.set_random_seed,
             pin_memory=True,
         )
-
-    @staticmethod
-    def set_random_seed(worker_id: int) -> None:
-        torch.random.manual_seed(1337)
 
 
 class VisualizePredictions(pl.Callback):

@@ -1,10 +1,11 @@
 #![feature(exact_size_is_empty)]
 
+use byteorder::{BigEndian, ByteOrder};
 use glob;
 use itertools::Itertools;
-use ndarray::{Array, Array2};
+use ndarray::{Array, Array2, ArrayViewMut};
 use ndarray_npy;
-use reason_othello::{Game, Location, Move, Player};
+use reason_othello::{bitboard::Bitboard, Game, Location, Move, Player};
 use std::convert::TryFrom;
 use std::fs;
 use std::io::{self, BufRead, Read, Seek, SeekFrom};
@@ -18,6 +19,8 @@ const WTHOR_OUTPUT_PATH: &str = "../resources/preprocessed/wthor.npy";
 const WTHOR_DB_HEADER_BYTES: u64 = 16;
 const WTHOR_GAME_BYTES: usize = 68;
 const WTHOR_GAME_HEADER_BYTES: usize = 8;
+
+const COMPRESSED_BYTES: usize = 33;
 
 fn parse_logistello_game(game_str: &str) -> Vec<(Game, Location, i8)> {
     let mut splits = game_str.split_ascii_whitespace();
@@ -108,14 +111,23 @@ fn parse_wthor_game(game_data: &[u8]) -> Vec<(Game, Location, i8)> {
         .collect()
 }
 
-fn make_datapoint(inputs: (Game, Location, i8)) -> Vec<u64> {
+// Compress a datapoint into the following 33-byte little-endian format:
+//  0 - 7:  active player bitboard
+//  8 - 15: opponent bitboard
+// 16 - 23: move one-hot bitboard
+// 24 - 31: active player legal moves
+// 32:      active player's score at the end of the game
+fn compress_datapoint(inputs: (Game, Location, i8)) -> [u8; COMPRESSED_BYTES] {
     let (game, loc, score) = inputs;
-    vec![
-        game.board.active_bitboard.into(),
-        game.board.opponent_bitboard.into(),
-        (u64::try_from(i64::from(score) + 64)).unwrap(),
-        loc.to_onehot().into(),
-    ]
+    let mut compressed = [0; COMPRESSED_BYTES];
+    let legal_moves_bitboard: u64 = Bitboard::from(game.board.get_moves()).into();
+    BigEndian::write_u64(&mut compressed[0..8], game.board.active_bitboard.into());
+    BigEndian::write_u64(&mut compressed[8..16], game.board.opponent_bitboard.into());
+    BigEndian::write_u64(&mut compressed[16..24], loc.to_onehot().into());
+    BigEndian::write_u64(&mut compressed[24..32], legal_moves_bitboard);
+    compressed[32] = u8::try_from(i16::from(score) + 64i16).unwrap();
+
+    compressed
 }
 
 fn main() -> io::Result<()> {
@@ -127,9 +139,10 @@ fn main() -> io::Result<()> {
         .concat();
 
     println!("Compressing Logistello data.");
-    let mut logistello_arr = Array2::<u64>::zeros((logistello_data.len(), 4));
+    let mut logistello_arr = Array2::<u8>::zeros((logistello_data.len(), COMPRESSED_BYTES));
     for (datapoint, mut row) in logistello_data.into_iter().zip(logistello_arr.rows_mut()) {
-        row.assign(&Array::from_vec(make_datapoint(datapoint)));
+        let mut compressed = compress_datapoint(datapoint);
+        row.assign(&ArrayViewMut::from_shape(COMPRESSED_BYTES, &mut compressed).unwrap());
     }
 
     println!("Writing Logistello data to {}", LOGISTELLO_OUTPUT_PATH);
@@ -160,9 +173,10 @@ fn main() -> io::Result<()> {
     }
 
     println!("Compressing WTHOR data.");
-    let mut wthor_arr = Array2::<u64>::zeros((wthor_data.len(), 4));
+    let mut wthor_arr = Array2::<u8>::zeros((wthor_data.len(), COMPRESSED_BYTES));
     for (datapoint, mut row) in wthor_data.into_iter().zip(wthor_arr.rows_mut()) {
-        row.assign(&Array::from_vec(make_datapoint(datapoint)));
+        let mut compressed = compress_datapoint(datapoint);
+        row.assign(&ArrayViewMut::from_shape(COMPRESSED_BYTES, &mut compressed).unwrap());
     }
 
     println!("Writing WTHOR data to {}", WTHOR_OUTPUT_PATH);

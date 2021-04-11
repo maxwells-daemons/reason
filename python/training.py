@@ -3,6 +3,7 @@ Defines the training strategy.
 """
 
 import logging
+from typing import List
 
 import hydra
 import numpy as np
@@ -12,14 +13,16 @@ import wandb
 from omegaconf import DictConfig, OmegaConf
 
 from python import game, utils
-from python.data import example, logistello, wthor
+from python.data import example
 from python.data.example import Example
 from python.network import AgentModel
 
 _logger = logging.getLogger(__name__)
 
 
+# Hardcoded for experiment repeatability
 RANDOM_SEED = 1337
+VAL_FRAC = 0.1
 
 
 class TrainingModule(pl.LightningModule):
@@ -182,26 +185,32 @@ class TrainingModule(pl.LightningModule):
 
 
 # TODO: move somewhere else
-# TODO: support sampling ratios
 class CompressedGameDataset(torch.utils.data.Dataset):
-    def __init__(self, wthor_data: np.ndarray, logistello_data: np.ndarray):
-        self._wthor_data = wthor_data
-        self._logistello_data = logistello_data
+    def __init__(
+        self,
+        data: np.ndarray,
+        augment_square_symmetries: bool,
+    ):
+        self._data = data
+        self._augment_square_symmetries = augment_square_symmetries
+        self._board_features = example.get_board_features("cpu")
 
     def __getitem__(self, index) -> Example:
-        wthor_lines = self._wthor_data.shape[0]
+        ex = Example.decompress(self._data[index])
 
-        if index < wthor_lines:
-            compressed = self._wthor_data[index]
-        else:
-            compressed = self._logistello_data[index - wthor_lines]
+        if self._augment_square_symmetries:
+            ex = example.augment_square_symmetries(ex)
 
-        return Example.decompress(compressed)
+        # Add board features, which aren't rotation/flip invariant
+        ex = ex._replace(board=torch.cat([ex.board, self._board_features], dim=0))
+
+        return ex
 
     def __len__(self):
-        return self._wthor_data.shape[0] + self._logistello_data.shape[0]
+        return self._data.shape[0]
 
 
+# TODO: support sampling ratios
 class ImitationData(pl.LightningDataModule):
     """
     A DataModule which samples from Logistello and WTHOR data and applies data
@@ -210,48 +219,37 @@ class ImitationData(pl.LightningDataModule):
 
     def __init__(
         self,
-        wthor_data_path: str,
-        logistello_data_path: str,
-        val_frac: float,
+        data_paths: List[str],
         batch_size: int,
         augment_square_symmetries: bool,
         data_workers: int,
     ):
         super().__init__()
-        self._wthor_data_path = wthor_data_path
-        self._logistello_data_path = logistello_data_path
-        self._val_frac = val_frac
+        self._data_paths = data_paths
         self._batch_size = batch_size
         self._augment_square_symmetries = augment_square_symmetries
         self._data_workers = data_workers
 
     def setup(self, stage=None):
         _logger.debug("Loading imitation training dataset.")
+        data_by_path = [np.load(path) for path in self._data_paths]
+        all_data = np.concatenate(data_by_path, axis=0)
 
-        wthor_data = np.load(self._wthor_data_path)
-        logistello_data = np.load(self._logistello_data_path)
-        data = CompressedGameDataset(wthor_data, logistello_data)
+        # Split data randomly into training and validation sets
+        np.random.default_rng(seed=RANDOM_SEED).shuffle(all_data)
+        val_lines = int(all_data.shape[0] * VAL_FRAC)
+        val_data = all_data[:val_lines, :]
+        train_data = all_data[val_lines:, :]
 
-        val_lines = int(len(data) * self._val_frac)
-        self._train_ds, self._val_ds = torch.utils.data.random_split(
-            data,
-            [len(data) - val_lines, val_lines],
-            generator=torch.Generator().manual_seed(RANDOM_SEED),
+        # Build datasets
+        self._train_ds = CompressedGameDataset(
+            train_data, self._augment_square_symmetries
         )
+        self._val_ds = CompressedGameDataset(val_data, False)  # Don't augment val data
 
-        self._board_features = example.get_board_features("cpu")
-
-    def on_before_batch_transfer(self, batch: Example, _):
-        # Augmentation, if applied
-        if self._augment_square_symmetries:
-            batch = example.augment_square_symmetries(batch)
-
-        # Add board features, which aren't rotation/flip invariant
-        batch_size = batch.board.size(0)
-        board_features = self._board_features.unsqueeze(0).repeat([batch_size, 1, 1, 1])
-        batch = batch._replace(board=torch.cat([batch.board, board_features], dim=1))
-
-        return batch
+        _logger.info(
+            f"Loaded {train_data.shape[0]} training positions and {val_data.shape[0]} validation positions."
+        )
 
     # TODO: val loader
     def train_dataloader(self):

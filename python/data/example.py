@@ -64,7 +64,7 @@ class Example(NamedTuple):
 
 def augment_square_symmetries(example: Example) -> Example:
     """
-    Randomly alter a batch with the symmetries of the square: flips and rotations.
+    Randomly alter an example with the symmetries of the square: flips and rotations.
     """
     board, score, policy_target, move_mask = example.clone()
 
@@ -79,9 +79,9 @@ def augment_square_symmetries(example: Example) -> Example:
         move_mask = torchvision.transforms.functional.vflip(move_mask)
 
     rotations = torch.randint(size=(1,), low=0, high=4).item()
-    board = torch.rot90(board, k=rotations, dims=[2, 3])  # type: ignore
-    policy_target = torch.rot90(policy_target, k=rotations, dims=[1, 2])  # type: ignore
-    move_mask = torch.rot90(move_mask, k=rotations, dims=[1, 2])  # type: ignore
+    board = torch.rot90(board, k=rotations, dims=[1, 2])  # type: ignore
+    policy_target = torch.rot90(policy_target, k=rotations, dims=[0, 1])  # type: ignore
+    move_mask = torch.rot90(move_mask, k=rotations, dims=[0, 1])  # type: ignore
 
     return Example(board, score, policy_target, move_mask)
 

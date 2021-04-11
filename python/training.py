@@ -65,7 +65,7 @@ class TrainingModule(pl.LightningModule):
     def forward(self, board):
         return self.model(board)
 
-    def _shared_step(self, batch, log_suffix):
+    def _shared_step(self, batch, mask_invalid_moves, log_suffix):
         """Do work common to `training_step` and `validation_step`."""
 
         # Forward pass
@@ -77,7 +77,7 @@ class TrainingModule(pl.LightningModule):
         target_move_probs_flat = target_move_probs.flatten(1)
         policy_logprobs_flat = utils.masked_log_softmax(
             policy_scores_flat,
-            valid_move_mask.flatten(1) if self.hparams.mask_invalid_moves else None,
+            valid_move_mask.flatten(1) if mask_invalid_moves else None,
         )
 
         policy_loss = utils.soft_crossentropy(
@@ -137,7 +137,11 @@ class TrainingModule(pl.LightningModule):
         }
 
     def training_step(self, batch, _):
-        shared_outs = self._shared_step(batch, log_suffix="training")
+        shared_outs = self._shared_step(
+            batch,
+            mask_invalid_moves=self.hparams.mask_invalid_moves,
+            log_suffix="training",
+        )
 
         return {
             "loss": shared_outs["loss"],
@@ -147,7 +151,7 @@ class TrainingModule(pl.LightningModule):
         }
 
     def validation_step(self, batch, _):
-        self._shared_step(batch, log_suffix="validation")
+        self._shared_step(batch, mask_invalid_moves=True, log_suffix="validation")
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)

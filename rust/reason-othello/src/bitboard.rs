@@ -72,6 +72,78 @@ impl Bitboard {
     pub fn is_empty(self) -> bool {
         self.0 == 0
     }
+
+    /// Split the bits in this bitboard into an array.
+    #[inline]
+    pub fn unpack(self) -> [bool; 64] {
+        let bb_data = u64::from(self);
+        [
+            bb_data & (1u64 << 63) != 0,
+            bb_data & (1u64 << 62) != 0,
+            bb_data & (1u64 << 61) != 0,
+            bb_data & (1u64 << 60) != 0,
+            bb_data & (1u64 << 59) != 0,
+            bb_data & (1u64 << 58) != 0,
+            bb_data & (1u64 << 57) != 0,
+            bb_data & (1u64 << 56) != 0,
+            bb_data & (1u64 << 55) != 0,
+            bb_data & (1u64 << 54) != 0,
+            bb_data & (1u64 << 53) != 0,
+            bb_data & (1u64 << 52) != 0,
+            bb_data & (1u64 << 51) != 0,
+            bb_data & (1u64 << 50) != 0,
+            bb_data & (1u64 << 49) != 0,
+            bb_data & (1u64 << 48) != 0,
+            bb_data & (1u64 << 47) != 0,
+            bb_data & (1u64 << 46) != 0,
+            bb_data & (1u64 << 45) != 0,
+            bb_data & (1u64 << 44) != 0,
+            bb_data & (1u64 << 43) != 0,
+            bb_data & (1u64 << 42) != 0,
+            bb_data & (1u64 << 41) != 0,
+            bb_data & (1u64 << 40) != 0,
+            bb_data & (1u64 << 39) != 0,
+            bb_data & (1u64 << 38) != 0,
+            bb_data & (1u64 << 37) != 0,
+            bb_data & (1u64 << 36) != 0,
+            bb_data & (1u64 << 35) != 0,
+            bb_data & (1u64 << 34) != 0,
+            bb_data & (1u64 << 33) != 0,
+            bb_data & (1u64 << 32) != 0,
+            bb_data & (1u64 << 31) != 0,
+            bb_data & (1u64 << 30) != 0,
+            bb_data & (1u64 << 29) != 0,
+            bb_data & (1u64 << 28) != 0,
+            bb_data & (1u64 << 27) != 0,
+            bb_data & (1u64 << 26) != 0,
+            bb_data & (1u64 << 25) != 0,
+            bb_data & (1u64 << 24) != 0,
+            bb_data & (1u64 << 23) != 0,
+            bb_data & (1u64 << 22) != 0,
+            bb_data & (1u64 << 21) != 0,
+            bb_data & (1u64 << 20) != 0,
+            bb_data & (1u64 << 19) != 0,
+            bb_data & (1u64 << 18) != 0,
+            bb_data & (1u64 << 17) != 0,
+            bb_data & (1u64 << 16) != 0,
+            bb_data & (1u64 << 15) != 0,
+            bb_data & (1u64 << 14) != 0,
+            bb_data & (1u64 << 13) != 0,
+            bb_data & (1u64 << 12) != 0,
+            bb_data & (1u64 << 11) != 0,
+            bb_data & (1u64 << 10) != 0,
+            bb_data & (1u64 << 9) != 0,
+            bb_data & (1u64 << 8) != 0,
+            bb_data & (1u64 << 7) != 0,
+            bb_data & (1u64 << 6) != 0,
+            bb_data & (1u64 << 5) != 0,
+            bb_data & (1u64 << 4) != 0,
+            bb_data & (1u64 << 3) != 0,
+            bb_data & (1u64 << 2) != 0,
+            bb_data & (1u64 << 1) != 0,
+            bb_data & (1u64 << 0) != 0,
+        ]
+    }
 }
 
 /// Score a board as: # my pieces - # opponent pieces.

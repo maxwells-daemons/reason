@@ -60,9 +60,14 @@ impl Game {
 
     /// Compute the winner of the game, or None if the game is not finished or the result is a draw.
     pub fn winner(self) -> Option<Player> {
-        if self.is_finished() {
+        if !self.is_finished() {
+            return None;
+        }
+
+        let score = self.board.score_absolute_difference();
+        if score == 0 {
             None
-        } else if self.board.score_absolute_difference() > 0 {
+        } else if score > 0 {
             Some(self.active_player)
         } else {
             Some(!self.active_player)

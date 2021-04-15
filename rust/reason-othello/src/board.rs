@@ -12,7 +12,7 @@ use std::fmt;
 /// [`Board`] operations are guaranteed to preserve validity contracts, but cannot
 /// check them on creation; may cause undefined behavior if invalid data is passed
 /// or if [`Board::pass`] and [`Board::apply_move`] are applied when they are not allowed.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct Board {
     pub active_bitboard: Bitboard,
     pub opponent_bitboard: Bitboard,

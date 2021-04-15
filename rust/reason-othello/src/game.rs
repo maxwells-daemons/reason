@@ -10,7 +10,7 @@ use std::fmt;
 use std::ops::Not;
 
 /// A safe interface to game logic. Slower than [`Board`], but implements a safer, checked interface.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Game {
     pub board: Board,
     pub active_player: Player,
@@ -46,6 +46,11 @@ impl Game {
                 }
             }
         }
+    }
+
+    /// Get the legal moves out of this game state.
+    pub fn get_moves(self) -> LocationList {
+        self.legal_moves
     }
 
     /// Whether this board represents a finished game.
@@ -209,7 +214,7 @@ impl From<ParseLocationError> for ParseMoveError {
 }
 
 /// One of the two players in a game.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Player {
     Black,
     White,

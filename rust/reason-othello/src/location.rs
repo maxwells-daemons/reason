@@ -10,7 +10,7 @@ use std::fmt::{self, Display, Formatter, Write};
 pub struct Location(Bitboard);
 
 /// A list of locations on the Othello board, which can be iterated to retrieve them.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd, Ord, From, Into)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd, Ord, From, Into, Hash)]
 pub struct LocationList(Bitboard);
 
 impl Location {

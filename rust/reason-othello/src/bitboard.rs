@@ -20,6 +20,7 @@ use std::fmt::{self, Display, Formatter};
     Copy,
     Debug,
     Eq,
+    Hash,
     PartialEq,
     PartialOrd,
     Ord,

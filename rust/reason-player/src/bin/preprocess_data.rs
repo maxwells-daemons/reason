@@ -3,7 +3,7 @@
 use byteorder::{BigEndian, ByteOrder};
 use glob;
 use itertools::Itertools;
-use ndarray::{Array, Array2, ArrayViewMut};
+use ndarray::{Array2, ArrayViewMut};
 use ndarray_npy;
 use reason_othello::{bitboard::Bitboard, Game, Location, Move, Player};
 use std::convert::TryFrom;

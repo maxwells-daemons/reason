@@ -1,6 +1,7 @@
 #![feature(exact_size_is_empty)]
 
 pub mod endgame;
+pub mod mcts;
 mod network;
 
 use reason_othello::{Board, NUM_SPACES};

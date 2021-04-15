@@ -1,0 +1,223 @@
+//! Code for monte-carlo tree search, used for earlygame and midgame play.
+
+use crate::network::{self, Prediction};
+use reason_othello::{Game, Move, Player};
+use std::collections::HashMap;
+use tch::CModule;
+
+pub struct MCTS<'a> {
+    root: Game,
+    positions: HashMap<Game, PositionData>,
+    model: &'a CModule,
+    prior_weight: f64,
+}
+
+// TODO: track known predecessors for graph backup
+#[derive(Debug)]
+enum PositionData {
+    Internal(InternalPosition),
+    Leaf(f64),
+}
+
+#[derive(Debug)]
+struct InternalPosition {
+    actions: Vec<ActionData>,
+    prediction: Prediction,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct ActionData {
+    action: Move,
+    result: Game,
+
+    visits: i32,
+    total_value: f64,
+    prior_prob: f64,
+}
+
+impl<'a> MCTS<'a> {
+    pub fn new(model: &'a CModule, prior_weight: f64) -> Self {
+        MCTS {
+            root: Game::default(),
+            positions: HashMap::new(),
+            model,
+            prior_weight,
+        }
+    }
+
+    /// Advance the MCTS tree by a single "simulation".
+    pub fn step(&mut self) {
+        // Select a leaf of the current MCTS tree by UCB.
+        let (leaf, trajectory, previously_visited) = self.select_leaf();
+
+        // Expand the leaf (unless it's a game-ending state we already visited).
+        if !previously_visited {
+            let expanded = self.expand(leaf);
+            self.positions.insert(leaf, expanded);
+        }
+        let leaf_data = self.positions.get(&leaf).unwrap();
+
+        // Compute the value of the position for the Black player.
+        let black_value = if leaf.active_player == Player::Black {
+            leaf_data.value()
+        } else {
+            -1.0 * leaf_data.value()
+        };
+
+        // Update the statistics up this trajectory for both players.
+        self.update_statistics(trajectory, black_value);
+    }
+
+    /// Pick a leaf node according to UCB tree traversal.
+    /// Leaves are typically unexplored states, but may also be game-ending states.
+    /// Returns: (leaf, trajectory, is_previously_visited).
+    fn select_leaf(&self) -> (Game, Vec<usize>, bool) {
+        let mut position = self.root;
+        let mut trajectory: Vec<usize> = Vec::new();
+
+        // Walk the tree of internal nodes by action until we hit a leaf or new node
+        while let Some(position_data) = self.positions.get(&position) {
+            if let PositionData::Internal(internal_data) = position_data {
+                // Internal case: we've seen this node before and have actions out of it.
+                let action_idx = self.ucb_action_index(internal_data);
+                trajectory.push(action_idx);
+                position = internal_data.actions[action_idx].result;
+            } else {
+                // Leaf case: UCB led us to a game-ending state and we can't continue.
+                return (position, trajectory, true);
+            }
+        }
+
+        // Board no longer in the tree: this is an unexplored node
+        (position, trajectory, false)
+    }
+
+    /// Expand a newly-visited position into a node.
+    fn expand(&self, position: Game) -> PositionData {
+        if position.is_finished() {
+            let value = value_finished_game(position);
+            return PositionData::Leaf(value);
+        }
+
+        let moves = position.get_moves();
+        let prediction = network::predict(position.board, moves, self.model);
+
+        let actions = if moves.is_empty() {
+            // No legal moves: `actions` just contains the pass move.
+            // NOTE: dummy 0.0 prior; this is the only action so UCB doesn't matter.
+            let pass_action = ActionData::new(position, Move::Pass, 0.0);
+            vec![pass_action]
+        } else {
+            moves
+                .map(|loc| ActionData::new(position, Move::Piece(loc), prediction.policy_at(loc)))
+                .collect()
+        };
+
+        PositionData::Internal(InternalPosition {
+            actions,
+            prediction,
+        })
+    }
+
+    /// Walk along the actions in `trajectory` and update statistics for each,
+    /// based on the simulation result at its end.
+    fn update_statistics(&mut self, trajectory: Vec<usize>, black_value: f64) {
+        let mut position = self.root;
+
+        for move_idx in trajectory {
+            let node_data = self.positions.get_mut(&position).unwrap();
+
+            // Compute the value of the leaf for the active player
+            let value = if position.active_player == Player::Black {
+                black_value
+            } else {
+                -1.0 * black_value
+            };
+
+            // Update the action-value toward the leaf value (for the active player)
+            if let PositionData::Internal(internal) = node_data {
+                let action = &mut internal.actions[move_idx];
+                action.visits += 1;
+                action.total_value += value;
+
+                // Proceed to next position
+                position = action.result;
+            } else {
+                panic!("Leaf node reached during backup!")
+            }
+        }
+    }
+
+    /// Get the index of the UCB-suggested action out of a position.
+    fn ucb_action_index(&self, position: &InternalPosition) -> usize {
+        assert_ne!(position.actions.len(), 0, "Cannot get action for a leaf.");
+
+        let num_visits: i32 = position.actions.iter().map(|action| action.visits).sum();
+
+        let mut best_index = usize::MAX;
+        let mut best_score: f64 = f64::NEG_INFINITY;
+        for (index, action) in position.actions.iter().enumerate() {
+            let score = action.ucb_score(self.prior_weight, num_visits);
+
+            if score > best_score {
+                best_index = index;
+                best_score = score;
+            }
+        }
+
+        best_index
+    }
+}
+
+impl PositionData {
+    /// Get the predicted value of a position from the perspective of the active player.
+    /// For leaves, +1/-1/0 for win/loss/draw.
+    /// For internal nodes, this is the value network's prediction.
+    fn value(&self) -> f64 {
+        match self {
+            PositionData::Internal(internal) => internal.prediction.value,
+            PositionData::Leaf(value) => *value,
+        }
+    }
+}
+
+impl ActionData {
+    fn new(parent: Game, action: Move, prior_prob: f64) -> Self {
+        let result = parent.apply_move(action).unwrap();
+
+        Self {
+            action,
+            result,
+            visits: 0,
+            total_value: 0.0,
+            prior_prob,
+        }
+    }
+
+    /// Compute the average action-value from the perspective of the active player.
+    fn average_value(&self) -> f64 {
+        if self.visits == 0 {
+            0.0
+        } else {
+            self.total_value / (self.visits as f64)
+        }
+    }
+
+    /// Compute the UCB score from the perspective of the active player.
+    fn ucb_score(&self, prior_weight: f64, parent_visits: i32) -> f64 {
+        let prior_weight =
+            prior_weight * (parent_visits as f64).sqrt() / ((1 + self.visits) as f64);
+        self.average_value() + prior_weight * self.prior_prob
+    }
+}
+
+/// Compute the value of a finished game: 1/-1/0 for win/loss/draw.
+fn value_finished_game(game: Game) -> f64 {
+    assert!(game.is_finished());
+
+    match game.winner() {
+        None => 0.0,
+        Some(player) if player == game.active_player => 1.0,
+        _ => -1.0,
+    }
+}

@@ -1,18 +1,26 @@
 //! Code for working with the agent neural network.
 
-use tch::{self, Device, IValue, Kind, Tensor};
+use tch::{self, Device, IValue, IndexOp, Kind, Tensor};
 
-use reason_othello::{self, bitboard::Bitboard, Board, LocationList};
+use reason_othello::{self, bitboard::Bitboard, Board, Location, LocationList};
 use std::convert::TryFrom;
 
 // Redefine these with types that `tch` likes
 const EDGE_LENGTH: i64 = reason_othello::EDGE_LENGTH as i64;
 const NUM_SPACES: i64 = reason_othello::NUM_SPACES as i64;
 
+#[derive(Debug)]
 pub struct Prediction {
     // Shape guaranteed to be [8, 8]
     policy: Tensor,
-    value: f64,
+    pub value: f64,
+}
+
+impl Prediction {
+    pub fn policy_at(&self, loc: Location) -> f64 {
+        let (row, col) = loc.to_coords();
+        self.policy.i((row as i64, col as i64)).double_value(&[])
+    }
 }
 
 fn tensorize_plane(bitboard: Bitboard) -> Tensor {

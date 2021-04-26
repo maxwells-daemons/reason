@@ -13,6 +13,7 @@ ndarray-npy = {version = "0.8.0", default-features = false}
 ndarray = "0.15.1"
 glob = "0.3.0"
 byteorder = "1.4.3"
+rand = "0.8.3"
 
 # TODO: move to dev-dependencies
 dot = "0.1.4"

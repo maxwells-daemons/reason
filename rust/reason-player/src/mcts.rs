@@ -2,6 +2,7 @@
 
 use crate::network::{self, Prediction};
 use dot;
+use rand;
 use reason_othello::{Game, Move, Player};
 use std::collections::HashMap;
 use tch::CModule;
@@ -67,6 +68,62 @@ impl<'a> MCTS<'a> {
 
         // Update the statistics up this trajectory for both players.
         self.update_statistics(trajectory, black_value);
+    }
+
+    /// Deterministically select the action with the most visits out of the root (which we expect to be best).
+    pub fn select_argmax_action(&self) -> Move {
+        if let Some(PositionData::Internal(data)) = self.positions.get(&self.root) {
+            let argmax_action = data
+                .actions
+                .iter()
+                .max_by_key(|action| action.visits)
+                .unwrap();
+            argmax_action.action
+        } else {
+            panic!("Tried to select an action at a leaf or without expanding the root.")
+        }
+    }
+
+    /// Select an action out of the root proportionally to its visit count.
+    pub fn sample_action(&self) -> Move {
+        if let Some(PositionData::Internal(data)) = self.positions.get(&self.root) {
+            let visit_counts: Vec<i32> = data.actions.iter().map(|action| action.visits).collect();
+            let total_visit_count: i32 = visit_counts.iter().sum();
+
+            let mut visits_left = rand::random::<f32>() * (total_visit_count as f32);
+            let mut action_idx: i32 = -1;
+
+            while visits_left > 0f32 {
+                action_idx += 1;
+                visits_left -= (data.actions[action_idx as usize].visits) as f32;
+            }
+
+            data.actions[action_idx as usize].action
+        } else {
+            panic!("Tried to select an action at a leaf or without expanding the root.")
+        }
+    }
+
+    /// Commit to an action, re-rooting the tree at the resulting node.
+    pub fn make_action(&mut self, action: Move) {
+        // Re-root tree, panicking if the move is invalid
+        let new_root = self.root.apply_move(action).unwrap();
+        self.root = new_root;
+
+        // Free all memory for positions which we know are unreachable from the root.
+        // Since moves can't remove pieces, a good guess is any node with less pieces than the root.
+        let root_pieces = self.root.board.occupied_mask().count_occupied();
+        let min_reachable_state_pieces = if self.root.get_moves().is_empty() {
+            // Next move is a pass -> states with as many pieces as the root may be reachable
+            root_pieces
+        } else {
+            // Next move is not a pass -> only states with more pieces are reachable
+            root_pieces + 1
+        };
+        self.positions.retain(|&game, _| {
+            (game == new_root)
+                || (game.board.occupied_mask().count_occupied() >= min_reachable_state_pieces)
+        });
     }
 
     /// Pick a leaf node according to UCB tree traversal.
@@ -267,6 +324,10 @@ impl<'a> dot::Labeller<'a, Game, (Game, ActionData)> for MCTS<'a> {
     }
 
     fn node_color(&'a self, node: &Game) -> Option<dot::LabelText<'a>> {
+        if *node == self.root {
+            return Some(dot::LabelText::label("green"));
+        }
+
         match self.positions.get(node) {
             None => Some(dot::LabelText::label("crimson")),
             Some(PositionData::Leaf(_)) => Some(dot::LabelText::label("deepskyblue")),

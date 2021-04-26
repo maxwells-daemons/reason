@@ -1,8 +1,9 @@
 #![feature(exact_size_is_empty)]
 
+pub mod connectors;
 pub mod endgame;
 pub mod mcts;
-mod network;
+pub mod network;
 
 use reason_othello::{Board, NUM_SPACES};
 
@@ -19,5 +20,4 @@ pub fn solve_exact(board: Board) -> i8 {
 // Faster, but provides less information.
 pub fn solve_win_loss_draw(board: Board) -> i8 {
     endgame::window(board, -1, 1)
-}
 }

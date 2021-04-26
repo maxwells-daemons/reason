@@ -1,6 +1,7 @@
 //! Code for monte-carlo tree search, used for earlygame and midgame play.
 
 use crate::network::{self, Prediction};
+use dot;
 use reason_othello::{Game, Move, Player};
 use std::collections::HashMap;
 use tch::CModule;
@@ -14,19 +15,19 @@ pub struct MCTS<'a> {
 
 // TODO: track known predecessors for graph backup
 #[derive(Debug)]
-enum PositionData {
+pub enum PositionData {
     Internal(InternalPosition),
     Leaf(f64),
 }
 
 #[derive(Debug)]
-struct InternalPosition {
+pub struct InternalPosition {
     actions: Vec<ActionData>,
     prediction: Prediction,
 }
 
 #[derive(Copy, Clone, Debug)]
-struct ActionData {
+pub struct ActionData {
     action: Move,
     result: Game,
 
@@ -228,5 +229,104 @@ fn value_finished_game(game: Game) -> f64 {
         None => 0.0,
         Some(player) if player == game.active_player => 1.0,
         _ => -1.0,
+    }
+}
+
+// Graphviz code for debugging
+impl<'a> dot::Labeller<'a, Game, (Game, ActionData)> for MCTS<'a> {
+    fn graph_id(&'a self) -> dot::Id<'a> {
+        dot::Id::new("MCTS").unwrap()
+    }
+
+    fn node_id(&'a self, node: &Game) -> dot::Id<'a> {
+        let id = format!(
+            "B{}_{}_{}_{}",
+            u64::from(node.board.active_bitboard),
+            u64::from(node.board.opponent_bitboard),
+            node.active_player,
+            node.board.just_passed
+        );
+        dot::Id::new(id).unwrap()
+    }
+
+    fn node_label(&'a self, node: &Game) -> dot::LabelText<'a> {
+        let board_label = dot::LabelText::label(node.to_string());
+        match self.positions.get(node) {
+            None => board_label,
+            Some(PositionData::Leaf(value)) => {
+                board_label.prefix_line(dot::LabelText::label(format!("Leaf value: {}", value)))
+            }
+            Some(PositionData::Internal(data)) => {
+                let value = data.prediction.value;
+                board_label.prefix_line(dot::LabelText::label(format!(
+                    "Predicted value: {:.3}",
+                    value
+                )))
+            }
+        }
+    }
+
+    fn node_color(&'a self, node: &Game) -> Option<dot::LabelText<'a>> {
+        match self.positions.get(node) {
+            None => Some(dot::LabelText::label("crimson")),
+            Some(PositionData::Leaf(_)) => Some(dot::LabelText::label("deepskyblue")),
+            _ => None,
+        }
+    }
+
+    fn edge_label(&'a self, edge: &(Game, ActionData)) -> dot::LabelText<'a> {
+        let parent_visits =
+            if let PositionData::Internal(data) = self.positions.get(&edge.0).unwrap() {
+                data.num_visits()
+            } else {
+                panic!("Found an edge whose source is not an internal node.")
+            };
+
+        dot::LabelText::label(format!(
+            "{}\nVisits: {}\nPrior: {:.3}\nAverage value: {:.3}\nUCB score: {:.3}",
+            edge.1.action,
+            edge.1.visits,
+            edge.1.prior_prob,
+            edge.1.average_value(),
+            edge.1.ucb_score(self.prior_weight, parent_visits)
+        ))
+    }
+}
+
+impl<'a> dot::GraphWalk<'a, Game, (Game, ActionData)> for MCTS<'a> {
+    fn nodes(&'a self) -> dot::Nodes<'a, Game> {
+        let mut nodes: Vec<Game> = Vec::new();
+
+        for (&node, data) in self.positions.iter() {
+            nodes.push(node);
+            if let PositionData::Internal(internal_data) = data {
+                for action in internal_data.actions.iter() {
+                    nodes.push(action.result);
+                }
+            }
+        }
+
+        nodes.dedup();
+        std::borrow::Cow::Owned(nodes)
+    }
+
+    fn edges(&'a self) -> dot::Edges<'a, (Game, ActionData)> {
+        let mut edges: Vec<(Game, ActionData)> = Vec::new();
+        for (&node, data) in self.positions.iter() {
+            if let PositionData::Internal(internal_data) = data {
+                for action in internal_data.actions.iter() {
+                    edges.push((node, *action))
+                }
+            }
+        }
+        std::borrow::Cow::Owned(edges)
+    }
+
+    fn source(&'a self, edge: &(Game, ActionData)) -> Game {
+        edge.0
+    }
+
+    fn target(&'a self, edge: &(Game, ActionData)) -> Game {
+        edge.1.result
     }
 }

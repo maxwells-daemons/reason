@@ -14,5 +14,8 @@ ndarray = "0.15.1"
 glob = "0.3.0"
 byteorder = "1.4.3"
 
+# TODO: move to dev-dependencies
+dot = "0.1.4"
+
 [dev-dependencies]
 indicatif = "0.15.0"

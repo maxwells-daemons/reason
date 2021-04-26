@@ -127,12 +127,13 @@ impl fmt::Display for Game {
             f,
         )?;
 
-        write!(
+        writeln!(
             f,
             "\nActive player: {} ({})",
             self.active_player,
             self.active_player.piece_char()
-        )
+        )?;
+        write!(f, "Just passed: {}", self.board.just_passed)
     }
 }
 

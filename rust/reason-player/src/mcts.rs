@@ -152,8 +152,7 @@ impl<'a> MCTS<'a> {
     fn ucb_action_index(&self, position: &InternalPosition) -> usize {
         assert_ne!(position.actions.len(), 0, "Cannot get action for a leaf.");
 
-        let num_visits: i32 = position.actions.iter().map(|action| action.visits).sum();
-
+        let num_visits = position.num_visits();
         let mut best_index = usize::MAX;
         let mut best_score: f64 = f64::NEG_INFINITY;
         for (index, action) in position.actions.iter().enumerate() {
@@ -178,6 +177,16 @@ impl PositionData {
             PositionData::Internal(internal) => internal.prediction.value,
             PositionData::Leaf(value) => *value,
         }
+    }
+}
+
+impl InternalPosition {
+    /// Get the number of times we've evaluated this node or a descendant.
+    fn num_visits(&self) -> i32 {
+        let child_visits: i32 = self.actions.iter().map(|action| action.visits).sum();
+        // NOTE: counting the parent like this is a departure from AlphaZero, but if we don't do
+        // it then the prior isn't used for the first action out of a node, which seems wrong.
+        child_visits + 1
     }
 }
 
